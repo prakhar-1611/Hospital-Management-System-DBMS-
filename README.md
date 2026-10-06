@@ -10,7 +10,7 @@
 MedCare OS is a React-based hospital management system that manages patient admissions, doctor scheduling, billing, and analytics with an interactive UI.
 
 ## 🔗 GitHub Repository
-https://github.com/prakhar-1611/Hospital-Management-System-DBMS
+https://github.com/prakhar-1611/Hospital-Management-System-DBMS-
 
 Folder Structure:
 
