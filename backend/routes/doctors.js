@@ -9,6 +9,7 @@ r.use(requireAuth);
 const pick = (obj, keys) => Object.fromEntries(keys.filter(k => obj[k] !== undefined).map(k => [k, obj[k]]));
 
 // GET /api/doctors?departmentId=  (FR3) - department name and fee populated
+// with departmentId -> index 3 {departmentId,status}; without -> all 40 doctors
 r.get("/", async (q, res, next) => {
   try {
     const filter = q.query.departmentId ? { departmentId: q.query.departmentId } : {};
@@ -28,7 +29,8 @@ r.get("/:id/availability", async (q, res, next) => {
     if (doc.status === "On Leave" || !doc.workingDays.includes(date.getUTCDay()))
       return res.json({ date: q.query.date, working: false, status: doc.status, slots: [] });
 
-    // uses index 2 (doctorId + date + timeSlot)
+    // query contains status "Scheduled", so the partial index 6 (doctorId+date+timeSlot)
+    // or the plain index 7 (doctorId+date) can serve it; the planner picks one
     const taken = await Appointment.find({ doctorId: doc._id, date, status: "Scheduled" }).distinct("timeSlot");
     const slots = generateTimeSlots(doc.workingHours.start, doc.workingHours.end)
       .map(t => ({ time: t, available: !taken.includes(t) }));
@@ -69,6 +71,7 @@ r.put("/:id", requireRole("admin", "doctor"), async (q, res, next) => {
 });
 
 // DELETE /api/doctors/:id  (admin) - not allowed while the doctor has Scheduled appointments
+// (the exists() check uses index 6 or 7)
 r.delete("/:id", requireRole("admin"), async (q, res, next) => {
   try {
     if (await Appointment.exists({ doctorId: q.params.id, status: "Scheduled" }))

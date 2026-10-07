@@ -5,23 +5,24 @@
 import { btnStyle, btnOutlineStyle } from "../constants";
 
 export default function PatientsSection({ patients, invoices, css, onNavigate, onDownload, onCreateInvoice, onViewInvoice }) {
+  // status = status of the patient's latest appointment (from MongoDB)
   const statusBadge = s => ({
-    Admitted:  { bg:"#fee2e2", c:"#991b1b" },
-    ICU:       { bg:"#fef9c3", c:"#854d0e" },
-    Discharged:{ bg:"#dcfce7", c:"#166534" },
+    Scheduled: { bg:"#dbeafe", c:"#1e40af" },
+    Completed: { bg:"#dcfce7", c:"#166534" },
+    Cancelled: { bg:"#fee2e2", c:"#991b1b" },
   }[s] || { bg:"#e5e7eb", c:"#374151" });
 
   return (
     <div style={{animation:"fadeIn .4s ease"}}>
       <div style={{background:css.card,padding:24,borderRadius:14,border:`1px solid ${css.border}`}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-          <h3 style={{color:css.text}}>Patient Records</h3>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:12,flexWrap:"wrap"}}>
+          <h3 style={{color:css.text}}>Patient Records <span style={{fontSize:12,fontWeight:400,color:css.textGray}}>({patients.length})</span></h3>
           <button onClick={() => onNavigate("appointments")} style={btnStyle}>+ New Admission</button>
         </div>
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:620}}>
+        <div className="mc-table-wrap">
+          <table style={{width:"100%",borderCollapse:"collapse",minWidth:820}}>
             <thead>
-              <tr>{["ID","Name","Condition","Doctor","Status","Invoice","Record"].map(h => (
+              <tr>{["ID","Name","Age / Gender","Latest visit","Reason","Doctor","Status","Invoice","Record"].map(h => (
                 <th key={h} style={{textAlign:"left",padding:"10px 14px",color:css.textGray,fontSize:12,borderBottom:`1px solid ${css.border}`}}>{h}</th>
               ))}</tr>
             </thead>
@@ -34,8 +35,10 @@ export default function PatientsSection({ patients, invoices, css, onNavigate, o
                 const invStatusBg    = { Paid:"#dcfce7", Unpaid:"#fef9c3", Voided:"#f3f4f6" };
                 return (
                   <tr key={p.id}>
-                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12}}>#{p.id}</td>
+                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12,whiteSpace:"nowrap"}} title={p.id}>{p.code}</td>
                     <td style={{padding:"12px 14px",color:css.text,fontSize:13,fontWeight:600}}>{p.name}</td>
+                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12,whiteSpace:"nowrap"}}>{p.age === "" ? "—" : p.age} / {p.gender || "—"}</td>
+                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12,whiteSpace:"nowrap"}}>{p.lastVisit || "—"}</td>
                     <td style={{padding:"12px 14px",color:css.text,fontSize:13}}>{p.condition}</td>
                     <td style={{padding:"12px 14px",color:css.text,fontSize:13}}>{p.doctor}</td>
                     <td style={{padding:"12px 14px"}}><span style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:b.bg,color:b.c}}>{p.status}</span></td>
@@ -54,7 +57,7 @@ export default function PatientsSection({ patients, invoices, css, onNavigate, o
                 );
               })}
               {patients.length === 0 && (
-                <tr><td colSpan={7} style={{padding:24,textAlign:"center",color:css.textGray,fontSize:13}}>No records found.</td></tr>
+                <tr><td colSpan={9} style={{padding:24,textAlign:"center",color:css.textGray,fontSize:13}}>No records found.</td></tr>
               )}
             </tbody>
           </table>

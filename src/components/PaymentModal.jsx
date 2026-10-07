@@ -28,7 +28,7 @@ export default function PaymentModal({ invoice: inv, css, onClose, onPay }) {
   if (done) return (
     <>
       <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:400,padding:40,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",textAlign:"center",animation:"slideUp .3s ease"}}>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(400px, 92vw)",padding:"clamp(20px, 6vw, 40px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",textAlign:"center",animation:"slideUp .3s ease"}}>
         <div style={{fontSize:60,marginBottom:16}}>✅</div>
         <h3 style={{color:"#22c55e",marginBottom:8}}>Payment Successful!</h3>
         <p style={{color:css.textGray,fontSize:14}}>${inv.grandTotal.toFixed(2)} received via {method}</p>
@@ -40,7 +40,7 @@ export default function PaymentModal({ invoice: inv, css, onClose, onPay }) {
   return (
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:480,maxHeight:"88vh",overflowY:"auto",padding:28,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(480px, 92vw)",maxHeight:"88vh",overflowY:"auto",padding:"clamp(16px, 4vw, 28px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <h3 style={{color:"#4361ee",margin:0}}>💳 Process Payment</h3>

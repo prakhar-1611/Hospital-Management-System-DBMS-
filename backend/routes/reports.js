@@ -1,4 +1,9 @@
-// Aggregation pipelines A1 - A7 (admin only). Used for the analytics dashboard.
+// Aggregation pipelines A1 - A7 (admin only). Used by the Analytics screen of the frontend.
+// Index use: only a $match that is the FIRST stage can use an index.
+//   A2 $match {status:"Completed"}                -> index 10 {status,date}
+//   A7 $match {status:"Scheduled", date range}    -> index 10 {status,date}
+//   A4 $match {status:{$ne:"Cancelled"}}          -> $ne is not selective; planner may scan
+//   A1, A3, A5, A6 group the whole collection     -> collection scan (expected)
 const r = require("express").Router();
 const { Appointment, Patient } = require("../models");
 const { requireAuth, requireRole } = require("../middleware/auth");

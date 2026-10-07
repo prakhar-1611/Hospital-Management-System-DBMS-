@@ -1,25 +1,43 @@
 /* ============================================================
    API LAYER — src/api.js
-   Calls the Express backend. The JWT from login/register is kept
-   in localStorage and sent with every request.
-   Screens are not wired to these functions yet (planned for Review 3).
+   Every screen of the admin portal gets its data through these
+   functions (Express backend -> MongoDB Atlas).
+   The JWT from login is kept in localStorage and sent with every request.
+   Base URL: VITE_API_URL (see .env.example), default http://localhost:5000/api
    ============================================================ */
 
 const BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
 export const getToken = () => localStorage.getItem("token");
-export const getUser  = () => JSON.parse(localStorage.getItem("user") || "null");
+export const getUser  = () => {
+  try { return JSON.parse(localStorage.getItem("user") || "null"); } catch { return null; }
+};
 export function logout() { localStorage.removeItem("token"); localStorage.removeItem("user"); }
+
+// App.jsx registers a callback here so that an expired / invalid token (HTTP 401)
+// logs the user out wherever it happens.
+let onUnauthorized = null;
+export function setUnauthorizedHandler(fn) { onUnauthorized = fn; }
 
 async function request(path, { method = "GET", body } = {}) {
   const headers = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  let res;
+  try {
+    res = await fetch(BASE + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  } catch {
+    const err = new Error("Cannot reach the API server. Is the backend running?");
+    err.status = 0;
+    err.network = true;               // used for the "DB offline" badge
+    throw err;
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || `Request failed (${res.status})`);
     err.status = res.status;          // 409 = slot already booked, 403 = not allowed
+    // only the first 401 for this token logs out (parallel requests would otherwise repeat it)
+    if (res.status === 401 && token && getToken() === token) { logout(); if (onUnauthorized) onUnauthorized(); }
     throw err;
   }
   return data;
@@ -55,17 +73,25 @@ export const deleteDoctor    = (id)           => request(`/doctors/${id}`, { met
 
 /* ---- patients ---- */
 export const getPatients   = (search) => request(`/patients${qs({ search })}`);
+export const createPatient = (p)      => request("/patients", { method: "POST", body: p });        // admin
 export const getMyProfile  = ()       => request("/patients/me");
 export const updateProfile = (p)      => request("/patients/me", { method: "PUT", body: p });
-export const deletePatient = (id)     => request(`/patients/${id}`, { method: "DELETE" });
+export const deletePatient = (id)     => request(`/patients/${id}`, { method: "DELETE" });          // admin
 
 /* ---- appointments ---- */
 // filters: { doctorId, departmentId, status, from, to }
 export const getAppointments   = (filters) => request(`/appointments${qs(filters)}`);
+// patient: { doctorId, date, timeSlot, reason }   admin: same + patientId
 export const bookAppointment   = (a)       => request("/appointments", { method: "POST", body: a });
 export const updateAppointment = (id, a)   => request(`/appointments/${id}`, { method: "PUT", body: a });
 export const cancelAppointment = (id)      => request(`/appointments/${id}`, { method: "DELETE" });
 
-/* ---- reports (admin) ---- */
-// name: by-department | top-doctors | monthly-trend | peak-slots | cancellation-rate | demographics | upcoming-load
-export const getReport = (name) => request(`/reports/${name}`);
+/* ---- reports (admin) — aggregation pipelines A1 to A7 ---- */
+export const getReport            = (name) => request(`/reports/${name}`);
+export const getByDepartment      = () => getReport("by-department");      // A1
+export const getTopDoctors        = () => getReport("top-doctors");        // A2
+export const getMonthlyTrend      = () => getReport("monthly-trend");      // A3
+export const getPeakSlots         = () => getReport("peak-slots");         // A4
+export const getCancellationRate  = () => getReport("cancellation-rate");  // A5
+export const getDemographics      = () => getReport("demographics");       // A6
+export const getUpcomingLoad      = () => getReport("upcoming-load");      // A7

@@ -2,21 +2,18 @@
    DoctorsSection.jsx
    Place this file at: src/components/DoctorsSection.jsx
    ============================================================ */
-import { DAY_NAMES, btnStyle, btnOutlineStyle, generateTimeSlots } from "../constants";
+import { DAY_NAMES, btnStyle, btnOutlineStyle, generateTimeSlots, getTodayPlus } from "../constants";
 
 /* ── Schedule Modal ── */
+// Busy slots = this doctor's Scheduled appointments, as loaded from GET /api/appointments.
+// Dates are "YYYY-MM-DD" strings; the weekday is computed in UTC, the same way the backend does.
 export function ScheduleModal({ doctor: doc, css, onClose }) {
-  const today = new Date();
-  const days  = Array.from({ length:14 }, (_, i) => {
-    const d = new Date(today);
-    d.setDate(today.getDate() + i);
-    return d.toISOString().split("T")[0];
-  });
+  const days  = Array.from({ length:14 }, (_, i) => getTodayPlus(i));
 
   return (
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:580,maxHeight:"85vh",overflowY:"auto",padding:28,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.25)",animation:"slideUp .3s ease"}}>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(580px, 92vw)",maxHeight:"85vh",overflowY:"auto",padding:"clamp(16px, 4vw, 28px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.25)",animation:"slideUp .3s ease"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
           <div>
             <h3 style={{color:"#4361ee",marginBottom:4}}>📅 {doc.name}'s Schedule</h3>
@@ -26,17 +23,17 @@ export function ScheduleModal({ doctor: doc, css, onClose }) {
         </div>
         <div style={{display:"grid",gap:12}}>
           {days.map(date => {
-            const dow       = new Date(date).getDay();
-            const isWorking = doc.workingDays.includes(dow);
+            const dow       = new Date(date + "T00:00:00Z").getUTCDay();
+            const isWorking = doc.workingDays.includes(dow) && doc.status !== "On Leave";
             const allSlots  = isWorking ? generateTimeSlots(doc.workingHours.start, doc.workingHours.end) : [];
             const busyTimes = new Set(doc.busySlots.filter(s => s.date === date).map(s => s.time));
-            const label     = new Date(date).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+            const label     = new Date(date + "T00:00:00Z").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",timeZone:"UTC"});
             return (
               <div key={date} style={{background:css.bg,borderRadius:10,padding:"12px 16px",border:`1px solid ${css.border}`}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:isWorking?10:0}}>
                   <span style={{fontWeight:600,fontSize:13,color:css.text}}>{label}</span>
                   {!isWorking
-                    ? <span style={{fontSize:11,padding:"3px 10px",background:"#fee2e2",color:"#991b1b",borderRadius:20}}>Day Off</span>
+                    ? <span style={{fontSize:11,padding:"3px 10px",background:"#fee2e2",color:"#991b1b",borderRadius:20}}>{doc.status === "On Leave" ? "On Leave" : "Day Off"}</span>
                     : <span style={{fontSize:11,padding:"3px 10px",background:"#dcfce7",color:"#166534",borderRadius:20}}>Working</span>
                   }
                 </div>
@@ -62,13 +59,16 @@ export function ScheduleModal({ doctor: doc, css, onClose }) {
 }
 
 /* ── Doctors Section ── */
-export default function DoctorsSection({ doctors, filter, setFilter, css, showToast, onToggle, onSchedule }) {
-  const depts       = ["All","Cardiology","Neurology","Orthopedics","General","Surgery","Gastroenterology","Pediatrics"];
+export default function DoctorsSection({ doctors, departments, filter, setFilter, css, showToast, onToggle, onSchedule }) {
+  const depts       = ["All", ...departments.map(d => d.name)];   // all 12 departments from the API
   const statusColor = { Available:"#22c55e", Busy:"#f59e0b", "On Leave":"#ef4444" };
   const statusBg    = { Available:"#dcfce7", Busy:"#fef9c3", "On Leave":"#fee2e2" };
 
   return (
     <div style={{animation:"fadeIn .4s ease"}}>
+      <p style={{fontSize:12,color:css.textGray,marginBottom:12}}>
+        {doctors.length} doctor{doctors.length !== 1 ? "s" : ""} · click a card to cycle its status (saved with PUT /api/doctors/:id)
+      </p>
       <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
         {depts.map(d => (
           <button key={d} onClick={() => setFilter(d)}
@@ -77,12 +77,13 @@ export default function DoctorsSection({ doctors, filter, setFilter, css, showTo
           </button>
         ))}
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(230px,1fr))",gap:22}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(min(230px, 100%),1fr))",gap:22}}>
         {doctors.map(d => (
           <div key={d.id} style={{background:css.card,padding:24,borderRadius:14,textAlign:"center",border:`1px solid ${css.border}`,transition:"all .25s",cursor:"pointer"}} onClick={() => onToggle(d.id)}>
             <div style={{width:72,height:72,borderRadius:"50%",margin:"0 auto 14px",background:statusBg[d.status],display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:700,color:statusColor[d.status]}}>{d.img}</div>
             <h3 style={{fontSize:14,fontWeight:700,color:css.text,marginBottom:4}}>{d.name}</h3>
-            <p style={{color:"#4361ee",fontSize:12,marginBottom:8}}>{d.dept}</p>
+            <p style={{color:"#4361ee",fontSize:12,marginBottom:d.specialization?2:8}}>{d.dept}</p>
+            {d.specialization && <p style={{color:css.textGray,fontSize:11,marginBottom:8}}>{d.specialization}</p>}
             <div style={{display:"inline-flex",alignItems:"center",gap:6,padding:"3px 10px",borderRadius:20,background:statusBg[d.status],marginBottom:12}}>
               <div style={{width:7,height:7,borderRadius:"50%",background:statusColor[d.status]}}/>
               <span style={{fontSize:11,fontWeight:600,color:statusColor[d.status]}}>{d.status}</span>

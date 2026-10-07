@@ -8,7 +8,7 @@ import { btnStyle } from "../constants";
 function ActivityDetail({ a, css }) {
   return (
     <div>
-      {[["Patient",a.patient],["Action",a.action],["Date",a.date||"—"],["Time",a.time],["Doctor",a.doctor||"—"],["Status",a.status]].map(([k,v]) => (
+      {[["Patient",a.patient],["Reason",a.action],["Date",a.date||"—"],["Time",a.time],["Doctor",a.doctor||"—"],["Department",a.dept||"—"],["Status",a.status]].map(([k,v]) => (
         <div key={k} style={{display:"flex",justifyContent:"space-between",padding:"11px 0",borderBottom:`1px solid ${css.border}`,fontSize:13}}>
           <strong style={{color:css.textGray}}>{k}</strong>
           <span style={{color:css.text}}>{v}</span>
@@ -66,11 +66,12 @@ export default function DashboardSection({ patients, doctors, appointments, invo
     { label:"Revenue Collected",  value:"$"+counts.r.toLocaleString(),icon:"💰", bg:"#fef2f2", nav:null        },
     { label:"Unpaid Invoices",    value:unpaidCount,                  icon:"📄", bg:"#fef9c3", nav:"billing"  },
   ];
+  // "Pending" = Scheduled in MongoDB
   const statusBadge = s => ({ Completed:{bg:"#dcfce7",color:"#166534"}, Pending:{bg:"#fef9c3",color:"#854d0e"}, Cancelled:{bg:"#fee2e2",color:"#991b1b"} }[s] || {bg:"#e5e7eb",color:"#374151"});
 
   return (
     <div style={{animation:"fadeIn .4s ease"}}>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:20,marginBottom:28}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(200px, 100%),1fr))",gap:20,marginBottom:28}}>
         {stats.map(s => (
           <div key={s.label} onClick={() => s.nav ? onNavigate(s.nav) : onRevenue()}
             style={{background:css.card,padding:22,borderRadius:14,boxShadow:"0 2px 10px rgba(0,0,0,.05)",display:"flex",justifyContent:"space-between",alignItems:"center",border:`1px solid ${css.border}`,cursor:"pointer",transition:"all .2s"}}>
@@ -83,11 +84,12 @@ export default function DashboardSection({ patients, doctors, appointments, invo
         ))}
       </div>
       <div style={{background:css.card,padding:24,borderRadius:14,border:`1px solid ${css.border}`}}>
-        <h3 style={{marginBottom:16,color:css.text}}>Recent Activity</h3>
-        <div style={{overflowX:"auto"}}>
+        <h3 style={{marginBottom:4,color:css.text}}>Recent Activity</h3>
+        <p style={{fontSize:12,color:css.textGray,marginBottom:14}}>Latest 8 bookings from the appointments collection ({appointments.length} in total)</p>
+        <div className="mc-table-wrap">
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:560}}>
             <thead>
-              <tr>{["Patient","Action","Date","Time","Status","View"].map(h => (
+              <tr>{["Patient","Reason","Date","Time","Status","View"].map(h => (
                 <th key={h} style={{textAlign:"left",padding:"10px 14px",color:css.textGray,fontSize:12,fontWeight:600,borderBottom:`1px solid ${css.border}`}}>{h}</th>
               ))}</tr>
             </thead>
@@ -95,7 +97,7 @@ export default function DashboardSection({ patients, doctors, appointments, invo
               {appointments.slice(0, 8).map((a, i) => {
                 const s = statusBadge(a.status);
                 return (
-                  <tr key={i}>
+                  <tr key={a.id || i}>
                     <td style={{padding:"12px 14px",color:css.text,fontSize:13}}><strong>{a.patient}</strong></td>
                     <td style={{padding:"12px 14px",color:css.text,fontSize:13}}>{a.action}</td>
                     <td style={{padding:"12px 14px",color:css.textGray,fontSize:12}}>{a.date||"—"}</td>

@@ -2,12 +2,14 @@
 // (191 users, 793 documents in total).
 //   npm run seed         -> wipes and loads the database in MONGO_URI
 //   npm run seed:check   -> builds the same data without a database, runs validateSync()
-//                           on every document and checks for slot conflicts
-require("dns").setServers(["8.8.8.8", "1.1.1.1"]);
+//                           and the $jsonSchema pre-check on every document and checks
+//                           for slot conflicts
 require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
+require("../dns-override")();      // only if DNS_SERVERS is set in .env
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const { User, Department, Doctor, Patient, Appointment } = require("../models");
+const { applyValidators, checkDocument } = require("../models/validators");
 const { generateTimeSlots, today } = require("../utils");
 
 const DRY = process.argv.includes("--dry-run");
@@ -149,13 +151,18 @@ async function build() {
 function check(data) {
   const pairs = [[User, data.users], [Department, data.departments], [Doctor, data.doctors],
                  [Patient, data.patients], [Appointment, data.appointments]];
-  let errors = 0, total = 0;
+  let errors = 0, schemaErrors = 0, total = 0, indexes = 0;
   for (const [M, docs] of pairs) {
     for (const d of docs) {
-      const err = new M(d).validateSync();
+      const doc = new M(d);
+      const err = doc.validateSync();
       if (err) { errors++; console.log(M.modelName, err.message); }
+      // the same plain object Mongoose would send to MongoDB, checked against the $jsonSchema
+      const problems = checkDocument(M.collection.collectionName, doc.toObject({ depopulate: true }));
+      if (problems.length) { schemaErrors++; console.log(problems.join("; ")); }
     }
     total += docs.length;
+    indexes += M.schema.indexes().length;
     console.log(`${M.modelName.padEnd(12)} ${docs.length}`);
   }
   const seen = new Set(); let conflicts = 0;
@@ -167,8 +174,9 @@ function check(data) {
   for (const a of data.appointments) by[a.status] = (by[a.status] || 0) + 1;
   console.log(`Total        ${total}`);
   console.log("Status split", Object.entries(by).map(([k, v]) => `${k} ${v} (${Math.round(v / 4)}%)`).join(", "));
-  console.log(`Validation errors: ${errors}, slot conflicts: ${conflicts}`);
-  return errors === 0 && conflicts === 0;
+  console.log(`Secondary indexes defined: ${indexes} (plus the default _id index on each collection)`);
+  console.log(`Validation errors: ${errors}, $jsonSchema pre-check errors: ${schemaErrors}, slot conflicts: ${conflicts}`);
+  return errors === 0 && schemaErrors === 0 && conflicts === 0;
 }
 
 (async () => {
@@ -176,16 +184,21 @@ function check(data) {
   if (DRY) { process.exit(check(data) ? 0 : 1); }
 
   if (!process.env.MONGO_URI) { console.error("MONGO_URI missing in backend/.env"); process.exit(1); }
+  // collections, validators and indexes are created explicitly below, in this order
+  mongoose.set("autoCreate", false);
+  mongoose.set("autoIndex", false);
   await mongoose.connect(process.env.MONGO_URI);
   const models = [User, Department, Doctor, Patient, Appointment];
+  await applyValidators(mongoose.connection.db);          // $jsonSchema on all 5 collections
   for (const M of models) await M.deleteMany({});
-  for (const M of models) await M.syncIndexes();          // creates the 5 indexes
+  for (const M of models) await M.syncIndexes();          // creates the 10 secondary indexes
   await Department.insertMany(data.departments);
   await User.insertMany(data.users);
   await Doctor.insertMany(data.doctors);
   await Patient.insertMany(data.patients);
   await Appointment.insertMany(data.appointments);
   for (const M of models) console.log(`${M.modelName.padEnd(12)} ${await M.countDocuments()}`);
+  console.log("\n$jsonSchema validators applied to: users, departments, doctors, patients, appointments");
   console.log("\nLogins: admin@medcare.com / admin123");
   console.log(`        ${data.users.find(u => u.role === "doctor").email} / doctor123 (all doctors)`);
   console.log(`        ${data.users.find(u => u.role === "patient").email} / patient123 (all patients)`);

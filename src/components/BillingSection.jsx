@@ -5,7 +5,7 @@
 import { useState } from "react";
 import { getTodayPlus, btnStyle, btnGreenStyle, btnOutlineStyle } from "../constants";
 
-export default function BillingSection({ invoices, patients, css, onCreateInvoice, onViewInvoice, onPay, onPrint }) {
+export default function BillingSection({ invoices, css, onCreateInvoice, onViewInvoice, onPay, onPrint }) {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
 
@@ -35,7 +35,7 @@ export default function BillingSection({ invoices, patients, css, onCreateInvoic
   return (
     <div style={{animation:"fadeIn .4s ease"}}>
       {/* Summary cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:16,marginBottom:24}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(180px, 100%),1fr))",gap:16,marginBottom:24}}>
         {summaryCards.map(s => (
           <div key={s.label} style={{background:css.card,padding:18,borderRadius:12,border:`1px solid ${css.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
             <div>
@@ -53,7 +53,7 @@ export default function BillingSection({ invoices, patients, css, onCreateInvoic
           <h3 style={{color:css.text}}>Invoices</h3>
           <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient / invoice..."
-              style={{padding:"8px 14px",border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:12,outline:"none",width:200}}/>
+              style={{padding:"8px 14px",border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:12,outline:"none",width:"min(200px, 100%)"}}/>
             {["All","Paid","Unpaid","Voided"].map(f => (
               <button key={f} onClick={() => setFilter(f)}
                 style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===f?"#4361ee":css.border}`,background:filter===f?"#4361ee":"transparent",color:filter===f?"white":css.textGray,cursor:"pointer",fontSize:12,fontWeight:filter===f?600:400}}>{f}</button>
@@ -62,7 +62,7 @@ export default function BillingSection({ invoices, patients, css, onCreateInvoic
           </div>
         </div>
 
-        <div style={{overflowX:"auto"}}>
+        <div className="mc-table-wrap">
           <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
             <thead>
               <tr>{["Invoice #","Patient","Doctor","Dept","Date","Due","Total","Status","Actions"].map(h => (

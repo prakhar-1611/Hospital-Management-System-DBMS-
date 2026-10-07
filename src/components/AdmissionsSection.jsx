@@ -60,7 +60,7 @@ function CalendarPicker({ value, onChange, css }) {
 }
 
 /* ── Admissions Section ── */
-export default function AdmissionsSection({ doctors, bookForm, setBookForm, availableSlots, slotError, availableDoctors, selectedPart, setSelectedPart, onSubmit, css }) {
+export default function AdmissionsSection({ departments, bookForm, setBookForm, availableSlots, slotError, slotsLoading, availableDoctors, saving, selectedPart, setSelectedPart, onSubmit, css }) {
   const PARTS = {
     Head:       { cx:100, cy:50,  r:30,                 type:"circle", dept:"Neurology"   },
     Torso:      { x:70,  y:85,  w:60,  h:100, rx:10,   type:"rect",   dept:"Cardiology"  },
@@ -76,18 +76,26 @@ export default function AdmissionsSection({ doctors, bookForm, setBookForm, avai
   function selectPart(name, dept) {
     setSelectedPart(name);
     const conds = DIAGNOSES[name.includes("Arm") ? "Arm" : name.includes("Leg") ? "Leg" : name] || ["General Pain"];
-    setBookForm(f => ({ ...f, dept, condition:conds[0], doctor:"" }));
+    setBookForm(f => ({ ...f, dept, condition:conds[0], doctorId:"", time:"" }));
   }
+
+  const label = (text, color) => (
+    <label style={{fontSize:12,fontWeight:600,color:color||css.textGray,display:"block",marginBottom:5}}>{text}</label>
+  );
+  const field = { width:"100%",padding:11,border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:13,outline:"none" };
+  const set = (k) => (e) => setBookForm(f => ({ ...f, [k]: e.target.value }));
+  const deptNames = departments.length ? departments.map(d => d.name) : ["General"];
 
   return (
     <div style={{animation:"fadeIn .4s ease"}}>
-      <div style={{background:css.card,padding:28,borderRadius:14,border:`1px solid ${css.border}`,width:"100%"}}>
-        <h3 style={{marginBottom:22,color:css.text}}>New Admission — Interactive Diagnosis</h3>
-        <div style={{display:"flex",gap:28,flexWrap:"wrap",width:"100%"}}>
+      <div className="mc-card" style={{background:css.card,borderRadius:14,border:`1px solid ${css.border}`,width:"100%"}}>
+        <h3 style={{marginBottom:6,color:css.text}}>New Admission — Interactive Diagnosis</h3>
+        <p style={{marginBottom:22,color:css.textGray,fontSize:12}}>Saving creates the patient (users + patients, one transaction) and books the appointment in MongoDB.</p>
+        <div className="mc-admit-grid">
 
           {/* Body diagram */}
-          <div style={{flex:"0 0 300px",minWidth:260,background:"radial-gradient(circle,#f8faff 0%,#eef2ff 100%)",borderRadius:14,border:`1px solid ${css.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,gap:12}}>
-            <svg width="200" height="380" viewBox="0 0 200 380" style={{overflow:"visible"}}>
+          <div className="mc-admit-diagram" style={{background:"radial-gradient(circle,#f8faff 0%,#eef2ff 100%)",borderRadius:14,border:`1px solid ${css.border}`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20,gap:12}}>
+            <svg viewBox="0 0 200 380" style={{overflow:"visible",width:"min(200px, 60vw)",height:"auto"}}>
               {Object.entries(PARTS).map(([name, p]) => {
                 const isActive = selectedPart === name;
                 const fill     = isActive ? "#4361ee" : "#e2e8f0";
@@ -101,12 +109,38 @@ export default function AdmissionsSection({ doctors, bookForm, setBookForm, avai
           </div>
 
           {/* Form */}
-          <div style={{flex:1,minWidth:280}}>
+          <div className="mc-admit-form">
             <form onSubmit={onSubmit} style={{display:"grid",gap:14}}>
               <div>
-                <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:5}}>Patient Name *</label>
-                <input required value={bookForm.name} onChange={e => setBookForm(f => ({...f,name:e.target.value}))} placeholder="Enter full name"
-                  style={{width:"100%",padding:11,border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:13,outline:"none"}}/>
+                {label("Patient Name *")}
+                <input required value={bookForm.name} onChange={set("name")} placeholder="Enter full name" style={field}/>
+              </div>
+              <div className="mc-form-row">
+                <div>
+                  {label("Age")}
+                  <input type="number" min="0" max="120" value={bookForm.age} onChange={set("age")} placeholder="e.g. 42" style={field}/>
+                </div>
+                <div>
+                  {label("Gender")}
+                  <select value={bookForm.gender} onChange={set("gender")} style={field}>
+                    <option value="">-- Select --</option>
+                    {["Male","Female","Other"].map(g => <option key={g}>{g}</option>)}
+                  </select>
+                </div>
+                <div>
+                  {label("Phone")}
+                  <input type="tel" value={bookForm.phone} onChange={set("phone")} placeholder="+91-9xxxxxxxxx" style={field}/>
+                </div>
+              </div>
+              <div className="mc-form-row">
+                <div>
+                  {label("Email (optional)")}
+                  <input type="email" value={bookForm.email} onChange={set("email")} placeholder="auto-generated if empty" style={field}/>
+                </div>
+                <div>
+                  {label("Address")}
+                  <input value={bookForm.address} onChange={set("address")} placeholder="Street, city" style={field}/>
+                </div>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:"#4361ee",display:"block",marginBottom:5}}>Detected Condition</label>
@@ -118,29 +152,31 @@ export default function AdmissionsSection({ doctors, bookForm, setBookForm, avai
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:5}}>Department</label>
-                <select value={bookForm.dept} onChange={e => setBookForm(f => ({...f,dept:e.target.value,doctor:"",time:""}))}
+                <select value={bookForm.dept} onChange={e => setBookForm(f => ({...f,dept:e.target.value,doctorId:"",time:""}))}
                   style={{width:"100%",padding:11,border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:13}}>
-                  {["General","Cardiology","Neurology","Orthopedics","Gastroenterology","Surgery","Pediatrics"].map(d => <option key={d}>{d}</option>)}
+                  {deptNames.map(d => <option key={d}>{d}</option>)}
                 </select>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:5}}>Assign Doctor <span style={{fontWeight:400,color:css.textGray}}>({availableDoctors.length} available)</span></label>
-                <select value={bookForm.doctor} onChange={e => setBookForm(f => ({...f,doctor:e.target.value,time:""}))}
+                <select value={bookForm.doctorId} onChange={e => setBookForm(f => ({...f,doctorId:e.target.value,time:""}))}
                   style={{width:"100%",padding:11,border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:13}}>
                   <option value="">-- Select doctor --</option>
-                  {availableDoctors.map(d => <option key={d.id} value={d.name}>{d.name} · {d.dept} ({d.status})</option>)}
+                  {availableDoctors.map(d => <option key={d.id} value={d.id}>{d.name} · {d.dept} ({d.status})</option>)}
                 </select>
               </div>
               <div>
                 <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:8}}>Appointment Date *</label>
                 <CalendarPicker value={bookForm.date} onChange={date => setBookForm(f => ({...f,date,time:""}))} css={css}/>
               </div>
-              {bookForm.doctor && bookForm.date && (
+              {bookForm.doctorId && bookForm.date && (
                 <div>
                   <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:8}}>
                     Available Time Slots {availableSlots.length > 0 && <span style={{color:"#22c55e",marginLeft:6}}>({availableSlots.length} free)</span>}
                   </label>
-                  {slotError
+                  {slotsLoading
+                    ? <div style={{padding:12,fontSize:12,color:css.textGray}}>⏳ Checking availability...</div>
+                    : slotError
                     ? <div style={{padding:12,background:"#fee2e2",borderRadius:8,color:"#991b1b",fontSize:12,border:"1px solid #fecaca"}}>⛔ {slotError}</div>
                     : <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
                         {availableSlots.map(slot => (
@@ -153,7 +189,10 @@ export default function AdmissionsSection({ doctors, bookForm, setBookForm, avai
                   }
                 </div>
               )}
-              <button type="submit" style={{...btnStyle,padding:"12px 0",fontSize:14,marginTop:4,width:"100%"}}>🏥 Admit Patient</button>
+              <button type="submit" disabled={saving}
+                style={{...btnStyle,padding:"12px 0",fontSize:14,marginTop:4,width:"100%",opacity:saving?0.7:1,cursor:saving?"wait":"pointer"}}>
+                {saving ? "Saving to database..." : "🏥 Admit Patient"}
+              </button>
             </form>
           </div>
         </div>

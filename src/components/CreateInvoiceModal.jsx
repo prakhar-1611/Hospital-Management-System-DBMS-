@@ -5,7 +5,9 @@
 import { useState } from "react";
 import { SERVICE_CATALOG, DEPT_FEES, getTodayPlus, btnStyle, btnOutlineStyle } from "../constants";
 
-export default function CreateInvoiceModal({ patient, patients, css, onClose, onCreate }) {
+// Billing is front-end only: invoices live in React state and are NOT stored in MongoDB.
+// Patients come from the API (ids are MongoDB ObjectId strings).
+export default function CreateInvoiceModal({ patient, patients, departments = [], css, onClose, onCreate }) {
   const [selectedPatient, setSelectedPatient] = useState(patient || null);
   const [lineItems,   setLineItems]   = useState([]);
   const [discount,    setDiscount]    = useState(0);
@@ -15,8 +17,12 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
   const [newQty,      setNewQty]      = useState(1);
   const [customPrice, setCustomPrice] = useState("");
 
-  const dept = selectedPatient?.dept || "General";
-  const fees = DEPT_FEES[dept] || DEPT_FEES.General;
+  const dept = selectedPatient?.dept && selectedPatient.dept !== "—" ? selectedPatient.dept : "General";
+  // consultation fee comes from the department document in MongoDB when available;
+  // procedure / bed charges are front-end price-list values (DEPT_FEES, General as fallback)
+  const apiFee = departments.find(d => d.name === dept)?.fee;
+  const base = DEPT_FEES[dept] || DEPT_FEES.General;
+  const fees = { ...base, consultation: apiFee ?? base.consultation };
 
   function getUnitPrice(serviceId) {
     const cat = SERVICE_CATALOG.find(s => s.id === serviceId);
@@ -48,7 +54,7 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
     if (lineItems.length === 0) { alert("Please add at least one service."); return; }
     onCreate({
       patientId:selectedPatient.id, patientName:selectedPatient.name,
-      doctor:selectedPatient.doctor, dept:selectedPatient.dept||"General",
+      doctor:selectedPatient.doctor, dept,
       date:getTodayPlus(0), dueDate,
       lineItems, subtotal, discount:parseFloat(discount)||0,
       tax:parseFloat(taxAmt.toFixed(2)), grandTotal:parseFloat(grandTotal.toFixed(2)),
@@ -59,7 +65,7 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
   return (
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:680,maxHeight:"90vh",overflowY:"auto",padding:28,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(680px, 92vw)",maxHeight:"90vh",overflowY:"auto",padding:"clamp(16px, 4vw, 28px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
 
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
@@ -73,14 +79,14 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
         {/* Patient select */}
         <div style={{marginBottom:18}}>
           <label style={{fontSize:12,fontWeight:600,color:css.textGray,display:"block",marginBottom:6}}>Patient *</label>
-          <select value={selectedPatient?.id||""} onChange={e => { const p = patients.find(x => x.id === parseInt(e.target.value)); setSelectedPatient(p||null); }}
+          <select value={selectedPatient?.id||""} onChange={e => { const p = patients.find(x => String(x.id) === e.target.value); setSelectedPatient(p||null); }}
             style={{width:"100%",padding:11,border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:13}}>
             <option value="">-- Select patient --</option>
-            {patients.map(p => <option key={p.id} value={p.id}>{p.name} · {p.condition} · {p.doctor}</option>)}
+            {patients.map(p => <option key={p.id} value={String(p.id)}>{p.name} ({p.code}) · {p.doctor}</option>)}
           </select>
           {selectedPatient && (
-            <div style={{marginTop:8,padding:"8px 12px",background:css.bg,borderRadius:8,fontSize:12,color:css.textGray,display:"flex",gap:16}}>
-              <span>🏥 Dept: <strong style={{color:css.text}}>{selectedPatient.dept||"General"}</strong></span>
+            <div style={{marginTop:8,padding:"8px 12px",background:css.bg,borderRadius:8,fontSize:12,color:css.textGray,display:"flex",gap:16,flexWrap:"wrap"}}>
+              <span>🏥 Dept: <strong style={{color:css.text}}>{dept}</strong></span>
               <span>📋 Status: <strong style={{color:css.text}}>{selectedPatient.status}</strong></span>
               <span>👨‍⚕️ <strong style={{color:css.text}}>{selectedPatient.doctor}</strong></span>
             </div>
@@ -136,8 +142,8 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
 
         {/* Line items */}
         {lineItems.length > 0 && (
-          <div style={{marginBottom:18}}>
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <div className="mc-table-wrap" style={{marginBottom:18}}>
+            <table style={{width:"100%",borderCollapse:"collapse",minWidth:420}}>
               <thead><tr>{["Service","Qty","Unit Price","Total",""].map(h => <th key={h} style={{textAlign:"left",padding:"8px 10px",color:css.textGray,fontSize:11,borderBottom:`1px solid ${css.border}`}}>{h}</th>)}</tr></thead>
               <tbody>
                 {lineItems.map((l, i) => (
@@ -177,7 +183,7 @@ export default function CreateInvoiceModal({ patient, patients, css, onClose, on
         </div>
 
         {/* Actions */}
-        <div style={{display:"flex",gap:12,justifyContent:"flex-end"}}>
+        <div style={{display:"flex",gap:12,justifyContent:"flex-end",flexWrap:"wrap"}}>
           <button onClick={onClose} style={btnOutlineStyle(css)}>Cancel</button>
           <button onClick={handleCreate} disabled={lineItems.length===0||!selectedPatient}
             style={{...btnStyle,opacity:lineItems.length===0||!selectedPatient?0.5:1,cursor:lineItems.length===0||!selectedPatient?"not-allowed":"pointer"}}>

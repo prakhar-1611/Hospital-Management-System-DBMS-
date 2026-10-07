@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import "./App.css";
 
 import {
   light, dark,
   btnStyle, btnOutlineStyle,
-  INITIAL_DOCTORS, INITIAL_PATIENTS, INITIAL_INVOICES, INITIAL_APPOINTMENTS,
+  INITIAL_INVOICES,
   getTodayPlus, nextInvoiceId,
   DAY_NAMES, DAY_FULL,
-  generateTimeSlots,
 } from "./constants";
+import * as api from "./api";
+import { mapAll } from "./mappers";
 
 import LoginScreen        from "./components/LoginScreen";
 import Toast              from "./components/Toast";
@@ -25,17 +27,29 @@ import SettingsSection    from "./components/SettingsSection";
 
 export default function App() {
   const [section, setSection]           = useState("dashboard");
-  const [loggedIn, setLoggedIn]         = useState(false);
+  // session restored from the stored JWT; only role "admin" may use this portal
+  const [user, setUser]                 = useState(() => {
+    const u = api.getToken() ? api.getUser() : null;
+    if (u && u.role !== "admin") { api.logout(); return null; }
+    return u;
+  });
+  const loggedIn = !!user;
   const [darkMode, setDarkMode]         = useState(false);
-  const [doctors, setDoctors]           = useState(INITIAL_DOCTORS);
-  const [patients, setPatients]         = useState(INITIAL_PATIENTS);
-  const [appointments, setAppointments] = useState(INITIAL_APPOINTMENTS);
+  // data loaded from MongoDB through the API
+  const [departments, setDepartments]   = useState([]);
+  const [doctors, setDoctors]           = useState([]);
+  const [patients, setPatients]         = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [dbStatus, setDbStatus]         = useState("loading");   // loading | online | offline
+  const [loadError, setLoadError]       = useState("");
+  // billing / invoices are front-end only (React state, not stored in MongoDB)
   const [invoices, setInvoices]         = useState(INITIAL_INVOICES);
+  const [sidebarOpen, setSidebarOpen]   = useState(false);
   const [notifications, setNotifications] = useState([
-    { id:1, type:"alert",   title:"High ICU Load",   body:"Capacity reached 84%. Check Analytics.",       time:"10 mins ago", read:false, nav:"analytics" },
-    { id:2, type:"success", title:"System Backup",   body:"Daily database backup completed.",              time:"2 hours ago", read:false, nav:"settings"  },
-    { id:3, type:"info",    title:"Staff Update",    body:"Dr. James Wilson requested schedule change.",   time:"5 hours ago", read:false, nav:"doctors"   },
-    { id:4, type:"warning", title:"Invoice Pending", body:"INV-0003 for Robert Stark is due in 7 days.",  time:"1 hour ago",  read:false, nav:"billing"   },
+    { id:1, type:"info",    title:"Live analytics",     body:"Analytics charts are computed by aggregation pipelines A1–A7 in MongoDB.", time:"Just now", read:false, nav:"analytics" },
+    { id:2, type:"info",    title:"Doctor status",      body:"Click a doctor card to change status; it is saved to MongoDB.",             time:"Just now", read:false, nav:"doctors"   },
+    { id:3, type:"warning", title:"Billing is local",   body:"Invoices are kept in the browser only and are not stored in MongoDB.",    time:"Just now", read:false, nav:"billing"   },
+    { id:4, type:"warning", title:"Invoice Pending",    body:"Sample invoice INV-0003 is unpaid (front-end demo data).",                 time:"Just now", read:false, nav:"billing"   },
   ]);
   const [toasts, setToasts]               = useState([]);
   const [docFilter, setDocFilter]         = useState("All");
@@ -62,31 +76,76 @@ export default function App() {
   }, []);
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const navigate = (sec) => { setSection(sec); setNotifOpen(false); setUserMenuOpen(false); };
+  const navigate = (sec) => { setSection(sec); setNotifOpen(false); setUserMenuOpen(false); setSidebarOpen(false); };
+
+  /* ── LOAD DATA FROM THE API (departments, doctors, patients, appointments) ── */
+  const loadAll = useCallback(async () => {
+    setDbStatus("loading");
+    try {
+      const [deps, docs, pts, appts] = await Promise.all([
+        api.getDepartments(), api.getDoctors(), api.getPatients(), api.getAppointments(),
+      ]);
+      const m = mapAll({ departments:deps, doctors:docs, patients:pts, appointments:appts });
+      setDepartments(m.departments);
+      setDoctors(m.doctors);
+      setPatients(m.patients);
+      setAppointments(m.appointments);
+      setDbStatus("online");
+      setLoadError("");
+    } catch (e) {
+      if (e.status === 401) return;              // handled by the unauthorized handler
+      setDbStatus("offline");
+      setLoadError(e.message);
+    }
+  }, []);
+
+  // a 401 anywhere (expired / invalid token) logs the user out
+  useEffect(() => {
+    api.setUnauthorizedHandler(() => {
+      setUser(null);
+      showToast("Session expired. Please log in again.","warning");
+    });
+    return () => api.setUnauthorizedHandler(null);
+  }, [showToast]);
+
+  useEffect(() => { if (loggedIn) loadAll(); }, [loggedIn, loadAll]);
 
   /* ── BOOKING STATE ── */
-  const [bookForm, setBookForm]       = useState({ name:"", condition:"", dept:"General", doctor:"", date:"", time:"" });
+  const EMPTY_FORM = { name:"", age:"", gender:"", phone:"", email:"", address:"", condition:"", dept:"General", doctorId:"", date:"", time:"" };
+  const [bookForm, setBookForm]       = useState(EMPTY_FORM);
   const [availableSlots, setAvailableSlots] = useState([]);
   const [slotError, setSlotError]     = useState("");
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotReload, setSlotReload]   = useState(0);
+  const [saving, setSaving]           = useState(false);
 
+  // time slots come from GET /api/doctors/:id/availability?date=  (server checks leave,
+  // working day, working hours and the Scheduled appointments of that day)
   useEffect(() => {
-    if (!bookForm.doctor || !bookForm.date) { setAvailableSlots([]); setSlotError(""); return; }
-    const doc = doctors.find(d => d.name === bookForm.doctor);
-    if (!doc) return;
-    const dow = new Date(bookForm.date).getDay();
-    if (!doc.workingDays.includes(dow)) {
-      setAvailableSlots([]);
-      setSlotError(`${doc.name} does not work on ${DAY_FULL[dow]}s. Working days: ${doc.workingDays.map(d => DAY_NAMES[d]).join(", ")}`);
-      return;
-    }
-    const allSlots = generateTimeSlots(doc.workingHours.start, doc.workingHours.end);
-    const busy     = doc.busySlots.filter(s => s.date === bookForm.date).map(s => s.time);
-    const booked   = appointments.filter(a => a.doctor === doc.name && a.date === bookForm.date).map(a => a.time);
-    const blocked  = new Set([...busy, ...booked]);
-    const free     = allSlots.filter(s => !blocked.has(s));
-    setAvailableSlots(free);
-    setSlotError(free.length === 0 ? "No available slots on this date for this doctor." : "");
-  }, [bookForm.doctor, bookForm.date, doctors, appointments]);
+    if (!bookForm.doctorId || !bookForm.date) { setAvailableSlots([]); setSlotError(""); return; }
+    let cancelled = false;
+    setSlotsLoading(true);
+    api.getAvailability(bookForm.doctorId, bookForm.date)
+      .then(r => {
+        if (cancelled) return;
+        const doc = doctors.find(d => d.id === bookForm.doctorId);
+        const name = doc ? doc.name : "This doctor";
+        if (!r.working) {
+          const dow = new Date(bookForm.date + "T00:00:00Z").getUTCDay();
+          setAvailableSlots([]);
+          setSlotError(r.status === "On Leave"
+            ? `${name} is on leave.`
+            : `${name} does not work on ${DAY_FULL[dow]}s. Working days: ${(doc?.workingDays || []).map(d => DAY_NAMES[d]).join(", ")}`);
+          return;
+        }
+        const free = r.slots.filter(x => x.available).map(x => x.time);
+        setAvailableSlots(free);
+        setSlotError(free.length === 0 ? "No available slots on this date for this doctor." : "");
+      })
+      .catch(e => { if (!cancelled) { setAvailableSlots([]); setSlotError(e.message); } })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [bookForm.doctorId, bookForm.date, slotReload, doctors]);
 
   const availableDoctors = bookForm.dept === "General"
     ? doctors
@@ -100,32 +159,92 @@ export default function App() {
   );
 
   /* ── HANDLERS ── */
-  function handleLogin(user, pass) {
-    if (user === "admin" && pass === "123") { setLoggedIn(true); showToast("Welcome Administrator","success"); }
-    else showToast("Invalid Credentials","warning");
+  // returns an error message for the login screen, or null on success
+  async function handleLogin(email, pass) {
+    try {
+      const u = await api.login(email, pass);
+      if (u.role !== "admin") {
+        api.logout();
+        return `This portal is for administrators only. ${u.email} is a ${u.role} account.`;
+      }
+      setUser(u);
+      setSection("dashboard");
+      showToast(`Welcome, ${u.name}`,"success");
+      return null;
+    } catch (e) {
+      return e.status === 401 ? "Invalid email or password" : e.message;
+    }
   }
 
-  function handleBooking(e) {
+  function handleLogout() {
+    api.logout();
+    setUser(null);
+    setUserMenuOpen(false);
+    setDoctors([]); setPatients([]); setAppointments([]); setDepartments([]);
+  }
+
+  // Admission = POST /api/patients (user + patient, one transaction) then POST /api/appointments.
+  // If the booking fails, the patient that was just created is deleted again.
+  async function handleBooking(e) {
     e.preventDefault();
-    if (!bookForm.time) { showToast("Please select a time slot","warning"); return; }
-    const newPt  = { id:200+patients.length, name:bookForm.name, condition:bookForm.condition||"Checkup", doctor:bookForm.doctor, dept:bookForm.dept, status:"Admitted", admitDate:bookForm.date };
-    const newApt = { id:Date.now(), patient:bookForm.name, action:"Admission", time:bookForm.time, date:bookForm.date, doctor:bookForm.doctor, status:"Pending" };
-    setPatients(p => [...p, newPt]);
-    setAppointments(a => [newApt, ...a]);
-    setDoctors(prev => prev.map(d => d.name === bookForm.doctor ? { ...d, busySlots:[...d.busySlots,{date:bookForm.date,time:bookForm.time}] } : d));
-    setBookForm({ name:"", condition:"", dept:"General", doctor:"", date:"", time:"" });
-    setSelectedPart(null);
-    navigate("patients");
-    showToast(`${bookForm.name} admitted — ${bookForm.date} at ${bookForm.time}`,"success");
-    addNotification({ type:"success", title:"New Admission", body:`${bookForm.name} → ${bookForm.doctor} on ${bookForm.date}`, nav:"patients" });
+    if (saving) return;
+    if (!bookForm.name.trim())  { showToast("Please enter the patient name","warning"); return; }
+    if (!bookForm.doctorId)     { showToast("Please select a doctor","warning"); return; }
+    if (!bookForm.date)         { showToast("Please select a date","warning"); return; }
+    if (!bookForm.time)         { showToast("Please select a time slot","warning"); return; }
+    const age = bookForm.age === "" ? undefined : Number(bookForm.age);
+    if (age !== undefined && (!Number.isInteger(age) || age < 0 || age > 120)) {
+      showToast("Age must be a whole number from 0 to 120","warning"); return;
+    }
+    const form = bookForm;
+    const docName = doctors.find(d => d.id === form.doctorId)?.name || "doctor";
+    setSaving(true);
+    let created = null;
+    try {
+      created = await api.createPatient({
+        name: form.name.trim(), age, gender: form.gender || undefined,
+        phone: form.phone.trim() || undefined, email: form.email.trim() || undefined,
+        address: form.address.trim() || undefined,
+      });
+      await api.bookAppointment({
+        patientId: created._id, doctorId: form.doctorId, date: form.date,
+        timeSlot: form.time, reason: form.condition || "Checkup",
+      });
+      setBookForm(EMPTY_FORM);
+      setSelectedPart(null);
+      await loadAll();
+      navigate("patients");
+      showToast(`${form.name} admitted: ${form.date} at ${form.time} (saved to MongoDB)`,"success");
+      addNotification({ type:"success", title:"New Admission", body:`${form.name} → ${docName} on ${form.date}`, nav:"patients" });
+    } catch (err) {
+      if (created) await api.deletePatient(created._id).catch(() => {});   // undo the half-finished admission
+      if (err.network) setDbStatus("offline");
+      if (created && err.status === 409) {
+        showToast("That slot was just booked. Please pick another slot.","warning");
+        setBookForm(f => ({ ...f, time:"" }));
+        setSlotReload(n => n + 1);
+        loadAll();
+      } else {
+        showToast(err.message, err.status === 409 ? "warning" : "error");
+      }
+    } finally {
+      setSaving(false);
+    }
   }
 
-  function toggleDocStatus(id) {
+  // status change is saved with PUT /api/doctors/:id
+  async function toggleDocStatus(id) {
     const doc  = doctors.find(d => d.id === id);
     if (!doc) return;
     const next = doc.status === "Available" ? "Busy" : doc.status === "Busy" ? "On Leave" : "Available";
-    showToast(`${doc.name} is now ${next}`,"info");
-    setDoctors(prev => prev.map(d => d.id === id ? { ...d, status:next } : d));
+    try {
+      const updated = await api.updateDoctor(id, { status: next });
+      setDoctors(prev => prev.map(d => d.id === id ? { ...d, status: updated.status } : d));
+      showToast(`${doc.name} is now ${updated.status} (saved)`,"info");
+    } catch (e) {
+      if (e.network) setDbStatus("offline");
+      showToast(`Could not update ${doc.name}: ${e.message}`,"error");
+    }
   }
 
   function createInvoice(data) {
@@ -159,7 +278,7 @@ export default function App() {
 
   function downloadRecord(p) {
     const blob = new Blob(
-      [`HOSPITAL SLIP\nID: #${p.id}\nPatient: ${p.name}\nCondition: ${p.condition}\nDoctor: ${p.doctor}\nStatus: ${p.status}`],
+      [`HOSPITAL SLIP\nID: ${p.code}\nPatient: ${p.name}\nAge / Gender: ${p.age || "—"} / ${p.gender || "—"}\nLatest visit: ${p.lastVisit || "—"}\nReason: ${p.condition}\nDoctor: ${p.doctor}\nStatus: ${p.status}`],
       { type:"text/plain" }
     );
     const a = document.createElement("a");
@@ -169,7 +288,8 @@ export default function App() {
   }
 
   function exportDB() {
-    const data = JSON.stringify({ doctors, patients, appointments, invoices }, null, 2);
+    // exports what is currently loaded in the browser (MongoDB data + front-end invoices)
+    const data = JSON.stringify({ departments, doctors, patients, appointments, invoices }, null, 2);
     const a = document.createElement("a");
     a.href = "data:text/json;charset=utf-8," + encodeURIComponent(data);
     a.download = "medcare_backup.json";
@@ -210,7 +330,12 @@ Payment    : ${inv.paymentMethod || "—"}
 
   /* ── RENDER ── */
   const css = darkMode ? dark : light;
-  if (!loggedIn) return <LoginScreen onLogin={handleLogin} />;
+  const toastLayer = (
+    <div className="mc-toasts">
+      {toasts.map(t => <Toast key={t.id} toast={t}/>)}
+    </div>
+  );
+  if (!loggedIn) return <>{toastLayer}<LoginScreen onLogin={handleLogin} /></>;
 
   const navItems = [
     ["dashboard",    "📊", "Dashboard"],
@@ -221,26 +346,30 @@ Payment    : ${inv.paymentMethod || "—"}
     ["billing",      "💳", "Billing"],
     ["settings",     "⚙️", "Settings"],
   ];
+  const badge = {
+    online:  { dot:"#22c55e", bg:"#dcfce7", fg:"#166534", text:"MongoDB connected" },
+    offline: { dot:"#ef4444", bg:"#fee2e2", fg:"#991b1b", text:"DB offline" },
+    loading: { dot:"#f59e0b", bg:"#fef9c3", fg:"#854d0e", text:"Loading" },
+  }[dbStatus];
+  const noData = doctors.length === 0 && patients.length === 0;
 
   return (
-    <div style={{display:"flex",height:"100vh",width:"100%",overflow:"hidden",background:css.bg,color:css.text,fontFamily:"'Inter','Segoe UI',sans-serif",transition:"all .3s"}}>
+    <div className="mc-shell" style={{background:css.bg,color:css.text}}>
 
       {/* TOASTS */}
-      <div style={{position:"fixed",top:20,right:20,zIndex:99999,pointerEvents:"none"}}>
-        {toasts.map(t => <Toast key={t.id} toast={t}/>)}
-      </div>
+      {toastLayer}
 
       {/* GENERIC MODAL (Activity / Revenue detail) */}
       {modal && (
         <>
           <div onClick={() => setModal(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:520,maxHeight:"85vh",overflowY:"auto",padding:30,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.25)",animation:"slideUp .3s ease"}}>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(580px, 92vw)",maxHeight:"85vh",overflowY:"auto",padding:"clamp(18px, 4vw, 30px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.25)",animation:"slideUp .3s ease"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
               <h3 style={{margin:0,color:"#4361ee"}}>{modal.title}</h3>
               <button onClick={() => setModal(null)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:css.textGray}}>✕</button>
             </div>
             <div>{modal.content}</div>
-            <div style={{marginTop:25,display:"flex",justifyContent:"flex-end",gap:10}}>
+            <div style={{marginTop:25,display:"flex",justifyContent:"flex-end",gap:10,flexWrap:"wrap"}}>
               <button onClick={() => setModal(null)} style={btnOutlineStyle(css)}>Close</button>
               <button onClick={() => window.print()} style={btnStyle}>🖨 Print</button>
             </div>
@@ -258,6 +387,7 @@ Payment    : ${inv.paymentMethod || "—"}
         <CreateInvoiceModal
           patient={invoiceModal.patient}
           patients={patients}
+          departments={departments}
           css={css}
           onClose={() => setInvoiceModal(null)}
           onCreate={(data) => { createInvoice(data); setInvoiceModal(null); navigate("billing"); }}
@@ -286,49 +416,62 @@ Payment    : ${inv.paymentMethod || "—"}
         />
       )}
 
-      {/* SIDEBAR */}
-      <aside style={{width:260,flexShrink:0,background:css.card,borderRight:`1px solid ${css.border}`,display:"flex",flexDirection:"column",padding:20,height:"100%",transition:"all .3s"}}>
+      {/* SIDEBAR: fixed column on desktop, off-canvas drawer under 900px */}
+      {sidebarOpen && <div className="mc-backdrop" onClick={() => setSidebarOpen(false)}/>}
+      <aside className={`mc-sidebar${sidebarOpen ? " open" : ""}`} style={{background:css.card,borderRight:`1px solid ${css.border}`}}>
         <div style={{fontSize:22,fontWeight:800,color:"#4361ee",marginBottom:36,display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:26}}>🏥</span> MedCare
+          <button className="mc-drawer-close" aria-label="Close menu" onClick={() => setSidebarOpen(false)} style={{color:css.textGray}}>✕</button>
         </div>
-        {navItems.map(([id, icon, label]) => (
-          <div key={id} onClick={() => navigate(id)}
-            style={{padding:"11px 14px",marginBottom:4,borderRadius:10,cursor:"pointer",display:"flex",alignItems:"center",gap:12,fontSize:14,transition:"all .2s",
-              background: section===id ? (darkMode ? "rgba(67,97,238,.18)" : "#eef2ff") : "transparent",
-              color:      section===id ? "#4361ee" : css.textGray,
-              fontWeight: section===id ? 600 : 400,
-            }}>
-            <span>{icon}</span>{label}
-            {id === "billing" && invoices.filter(i => i.status === "Unpaid").length > 0 && (
-              <span style={{marginLeft:"auto",background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20}}>
-                {invoices.filter(i => i.status === "Unpaid").length}
-              </span>
-            )}
-          </div>
-        ))}
-        
+        <nav>
+          {navItems.map(([id, icon, label]) => (
+            <div key={id} onClick={() => navigate(id)} role="button" tabIndex={0}
+              onKeyDown={e => e.key === "Enter" && navigate(id)}
+              style={{padding:"11px 14px",marginBottom:4,borderRadius:10,cursor:"pointer",display:"flex",alignItems:"center",gap:12,fontSize:14,transition:"all .2s",
+                background: section===id ? (darkMode ? "rgba(67,97,238,.18)" : "#eef2ff") : "transparent",
+                color:      section===id ? "#4361ee" : css.textGray,
+                fontWeight: section===id ? 600 : 400,
+              }}>
+              <span>{icon}</span>{label}
+              {id === "billing" && invoices.filter(i => i.status === "Unpaid").length > 0 && (
+                <span style={{marginLeft:"auto",background:"#ef4444",color:"white",fontSize:10,fontWeight:700,padding:"1px 7px",borderRadius:20}}>
+                  {invoices.filter(i => i.status === "Unpaid").length}
+                </span>
+              )}
+            </div>
+          ))}
+        </nav>
       </aside>
 
       {/* MAIN */}
-      <main style={{flex:1,minWidth:0,display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+      <main className="mc-main">
 
         {/* HEADER */}
-        <header style={{height:72,background:css.card,borderBottom:`1px solid ${css.border}`,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 28px",flexShrink:0}}>
-          <h2 style={{margin:0,fontSize:20,fontWeight:700,textTransform:"capitalize"}}>
-            {section === "billing" ? "Billing & Payments" : section}
+        <header className="mc-header" style={{background:css.card,borderBottom:`1px solid ${css.border}`}}>
+          <button className="mc-hamburger" aria-label="Open menu" onClick={() => setSidebarOpen(true)}
+            style={{color:css.text,border:`1px solid ${css.border}`}}>☰</button>
+          <h2 className="mc-title" style={{margin:0,fontSize:20,fontWeight:700,textTransform:"capitalize"}}>
+            {section === "billing" ? "Billing & Payments" : section === "appointments" ? "Admissions" : section}
           </h2>
-          <div style={{flex:1,maxWidth:360,margin:"0 24px"}}>
+          <div className="mc-search">
             <div style={{background:css.bg,padding:"9px 18px",borderRadius:50,display:"flex",alignItems:"center",gap:10,border:`1px solid ${css.border}`}}>
               <span style={{color:css.textGray}}>🔍</span>
-              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..."
+              <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search patients..."
                 style={{border:"none",background:"transparent",outline:"none",width:"100%",color:css.text,fontSize:13}}/>
             </div>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:20}}>
+          <div className="mc-header-actions">
+
+            {/* DB STATUS BADGE */}
+            <span className="mc-db-badge" title={loadError || badge.text}
+              style={{background:badge.bg,color:badge.fg}}>
+              <span style={{width:8,height:8,borderRadius:"50%",background:badge.dot,flexShrink:0}}/>
+              <span className="mc-db-badge-text">{badge.text}</span>
+            </span>
 
             {/* BELL */}
             <div style={{position:"relative"}}>
-              <button onClick={() => { setNotifOpen(o => !o); setUserMenuOpen(false); }}
+              <button onClick={() => { setNotifOpen(o => !o); setUserMenuOpen(false); }} aria-label="Notifications"
                 style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:css.textGray,position:"relative",padding:4}}>
                 🔔
                 {unreadCount > 0 && (
@@ -353,22 +496,22 @@ Payment    : ${inv.paymentMethod || "—"}
             <div style={{position:"relative"}}>
               <div onClick={() => { setUserMenuOpen(o => !o); setNotifOpen(false); }}
                 style={{width:38,height:38,background:"#4361ee",borderRadius:"50%",color:"white",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,cursor:"pointer",fontSize:14,boxShadow:"0 4px 12px rgba(67,97,238,.35)"}}>
-                A
+                {(user.name || "A")[0].toUpperCase()}
               </div>
               {userMenuOpen && (
-                <div style={{position:"absolute",top:50,right:0,width:210,background:css.card,borderRadius:12,boxShadow:"0 12px 32px rgba(0,0,0,.15)",border:`1px solid ${css.border}`,zIndex:1000,overflow:"hidden",animation:"menuSlide .2s ease"}}>
+                <div style={{position:"absolute",top:50,right:0,width:230,background:css.card,borderRadius:12,boxShadow:"0 12px 32px rgba(0,0,0,.15)",border:`1px solid ${css.border}`,zIndex:1000,overflow:"hidden",animation:"menuSlide .2s ease"}}>
                   <div style={{padding:14,background:css.bg,borderBottom:`1px solid ${css.border}`}}>
-                    <strong style={{display:"block",fontSize:13,color:css.text}}>Admin User</strong>
-                    <span style={{fontSize:11,color:"#4361ee"}}>System Administrator</span>
+                    <strong style={{display:"block",fontSize:13,color:css.text}}>{user.name}</strong>
+                    <span style={{fontSize:11,color:"#4361ee",wordBreak:"break-all"}}>{user.email} · {user.role}</span>
                   </div>
-                  {[["⚙️ Profile Settings","settings"],["🛡 Security Log",null]].map(([label, nav], i) => (
-                    <div key={i} onClick={() => { if (nav) navigate(nav); else showToast("Last Login: Just Now","info"); setUserMenuOpen(false); }}
+                  {[["⚙️ Profile Settings","settings"],["🔄 Reload data from MongoDB",null]].map(([label, nav], i) => (
+                    <div key={i} onClick={() => { if (nav) navigate(nav); else loadAll(); setUserMenuOpen(false); }}
                       style={{padding:"11px 14px",display:"flex",alignItems:"center",gap:10,fontSize:13,cursor:"pointer",color:css.text}}>
                       {label}
                     </div>
                   ))}
                   <div style={{height:1,background:css.border}}/>
-                  <div onClick={() => { if (confirm("Log out?")) setLoggedIn(false); }}
+                  <div onClick={() => { if (confirm("Log out?")) handleLogout(); }}
                     style={{padding:"11px 14px",fontSize:13,cursor:"pointer",color:"#ef4444"}}>
                     🚪 Logout System
                   </div>
@@ -379,7 +522,19 @@ Payment    : ${inv.paymentMethod || "—"}
         </header>
 
         {/* CONTENT */}
-        <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:28}}>
+        <div className="mc-content">
+
+          {dbStatus === "loading" && noData && (
+            <div className="mc-banner" style={{background:css.card,border:`1px solid ${css.border}`,color:css.textGray}}>
+              ⏳ Loading departments, doctors, patients and appointments from MongoDB...
+            </div>
+          )}
+          {dbStatus === "offline" && (
+            <div className="mc-banner" style={{background:"#fee2e2",border:"1px solid #fecaca",color:"#991b1b"}}>
+              <span>⛔ Could not load data from the API: {loadError}</span>
+              <button onClick={loadAll} style={{...btnStyle,padding:"6px 14px",fontSize:12}}>Retry</button>
+            </div>
+          )}
 
           {section === "dashboard" && (
             <DashboardSection
@@ -397,7 +552,8 @@ Payment    : ${inv.paymentMethod || "—"}
 
           {section === "doctors" && (
             <DoctorsSection
-              doctors={filteredDocs} filter={docFilter} setFilter={setDocFilter}
+              doctors={filteredDocs} departments={departments}
+              filter={docFilter} setFilter={setDocFilter}
               css={css} showToast={showToast}
               onToggle={toggleDocStatus}
               onSchedule={d => setScheduleModal(d)}
@@ -416,9 +572,9 @@ Payment    : ${inv.paymentMethod || "—"}
 
           {section === "appointments" && (
             <AdmissionsSection
-              doctors={doctors} bookForm={bookForm} setBookForm={setBookForm}
-              availableSlots={availableSlots} slotError={slotError}
-              availableDoctors={availableDoctors}
+              departments={departments} bookForm={bookForm} setBookForm={setBookForm}
+              availableSlots={availableSlots} slotError={slotError} slotsLoading={slotsLoading}
+              availableDoctors={availableDoctors} saving={saving}
               selectedPart={selectedPart} setSelectedPart={setSelectedPart}
               onSubmit={handleBooking} css={css}
             />
@@ -443,21 +599,6 @@ Payment    : ${inv.paymentMethod || "—"}
 
         </div>
       </main>
-
-      <style>{`
-        @keyframes slideUp   { from{transform:translate(-50%,-44%) scale(.97);opacity:0} to{transform:translate(-50%,-50%) scale(1);opacity:1} }
-        @keyframes menuSlide { from{opacity:0;transform:translateY(-6px) scale(.98)} to{opacity:1;transform:translateY(0) scale(1)} }
-        @keyframes slideIn   { from{opacity:0;transform:translateX(110%) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
-        @keyframes fadeIn    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-        *,*::before,*::after { box-sizing:border-box; margin:0; padding:0 }
-        html,body { width:100%; height:100%; margin:0; padding:0; overflow:hidden }
-        #root { width:100%; height:100% }
-        button:active { transform:scale(.97) }
-        ::-webkit-scrollbar { width:6px }
-        ::-webkit-scrollbar-thumb { background:#c1c8d4; border-radius:3px }
-        input,select { font-family:inherit }
-        * { -webkit-font-smoothing:antialiased }
-      `}</style>
     </div>
   );
 }

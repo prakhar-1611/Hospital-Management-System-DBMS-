@@ -1,5 +1,5 @@
-require("dns").setServers(["8.8.8.8", "1.1.1.1"]);
-require("dotenv").config();
+require("dotenv").config({ path: require("path").join(__dirname, ".env") });
+require("./dns-override")();      // only if DNS_SERVERS is set in .env (see README, troubleshooting)
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
@@ -21,8 +21,13 @@ app.use((req, res) => res.status(404).json({ error: "Route not found" }));
 app.use((err, req, res, _next) => {
   if (err.code === 11000) {
     // duplicate key from a unique index
-    const slot = err.keyPattern && err.keyPattern.timeSlot;
-    return res.status(409).json({ error: slot ? "Slot already booked" : "Duplicate value" });
+    const kp = err.keyPattern || {};
+    const msg = kp.timeSlot ? "Slot already booked" : kp.email ? "Email already registered" : "Duplicate value";
+    return res.status(409).json({ error: msg });
+  }
+  if (err.code === 121) {
+    // rejected by the $jsonSchema validator inside MongoDB (models/validators.js)
+    return res.status(400).json({ error: "Document failed database validation" });
   }
   if (err.name === "ValidationError") {
     return res.status(400).json({ error: Object.values(err.errors).map(e => e.message).join(", ") });
@@ -33,6 +38,10 @@ app.use((err, req, res, _next) => {
 });
 
 const PORT = process.env.PORT || 5000;
+if (!process.env.MONGO_URI || !process.env.JWT_SECRET) {
+  console.error("MONGO_URI and JWT_SECRET must be set in backend/.env (copy .env.example)");
+  process.exit(1);
+}
 mongoose.connect(process.env.MONGO_URI)
   .then(() => app.listen(PORT, () => console.log(`API running on http://localhost:${PORT}`)))
   .catch(e => { console.error("MongoDB connection failed:", e.message); process.exit(1); });

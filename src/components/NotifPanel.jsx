@@ -25,7 +25,7 @@ export default function NotifPanel({ notifications, css, onMarkAll, onDismiss, o
   ];
 
   return (
-    <div style={{position:"absolute",top:48,right:-10,width:380,background:css.card,borderRadius:14,boxShadow:"0 12px 36px rgba(0,0,0,.22)",border:`1px solid ${css.border}`,zIndex:1000,overflow:"hidden",animation:"menuSlide .2s ease"}}>
+    <div className="mc-notif-panel" style={{position:"absolute",top:48,right:-10,width:380,background:css.card,borderRadius:14,boxShadow:"0 12px 36px rgba(0,0,0,.22)",border:`1px solid ${css.border}`,zIndex:1000,overflow:"hidden",animation:"menuSlide .2s ease"}}>
       <div style={{padding:"14px 16px 0",background:css.bg,borderBottom:`1px solid ${css.border}`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
           <strong style={{fontSize:14,color:css.text}}>🔔 Notifications</strong>

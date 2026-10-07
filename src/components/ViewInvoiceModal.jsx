@@ -15,7 +15,7 @@ export default function ViewInvoiceModal({ invoice: inv, css, onClose, onPay, on
   return (
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:19999,backdropFilter:"blur(4px)"}}/>
-      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:600,maxHeight:"88vh",overflowY:"auto",padding:28,borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
+      <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",background:css.card,width:"min(580px, 92vw)",maxHeight:"88vh",overflowY:"auto",padding:"clamp(16px, 4vw, 28px)",borderRadius:16,zIndex:20000,boxShadow:"0 25px 50px rgba(0,0,0,.3)",animation:"slideUp .3s ease"}}>
 
         {/* Header */}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}>
@@ -48,7 +48,7 @@ export default function ViewInvoiceModal({ invoice: inv, css, onClose, onPay, on
         {/* Line items */}
         <div style={{marginBottom:18}}>
           <h4 style={{color:css.text,marginBottom:10,fontSize:13}}>Services</h4>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <div className="mc-table-wrap"><table style={{width:"100%",borderCollapse:"collapse",minWidth:380}}>
             <thead>
               <tr>{["Service","Qty","Unit Price","Total"].map(h => (
                 <th key={h} style={{textAlign:"left",padding:"8px 10px",color:css.textGray,fontSize:11,borderBottom:`1px solid ${css.border}`}}>{h}</th>
@@ -64,7 +64,7 @@ export default function ViewInvoiceModal({ invoice: inv, css, onClose, onPay, on
                 </tr>
               ))}
             </tbody>
-          </table>
+          </table></div>
         </div>
 
         {/* Totals */}
