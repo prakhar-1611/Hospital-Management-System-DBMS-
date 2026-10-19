@@ -46,6 +46,9 @@ export function mapDoctor(d, appointments) {
     img: initials(d.name),
     status: d.status,
     specialization: d.specialization || "",
+    email: (d.userId && typeof d.userId === "object" && d.userId.email) || "",   // admin only (populated login account)
+    phone: (d.userId && typeof d.userId === "object" && d.userId.phone) || "",
+    fee: d.departmentId && typeof d.departmentId === "object" ? d.departmentId.consultationFee : undefined,
     workingDays: d.workingDays || [],
     workingHours: d.workingHours || { start: "09:00", end: "17:00" },
     busySlots,

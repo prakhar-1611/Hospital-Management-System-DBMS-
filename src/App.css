@@ -76,10 +76,6 @@ input, select, button { font-family: inherit }
 /* hidden on desktop */
 .mc-hamburger, .mc-drawer-close, .mc-backdrop { display: none }
 
-/* ---------- admission form + body diagram ---------- */
-.mc-admit-grid    { display: flex; gap: 28px; flex-wrap: wrap; width: 100% }
-.mc-admit-diagram { flex: 0 0 300px; min-width: 260px }
-.mc-admit-form    { flex: 1; min-width: 280px }
 .mc-form-row      { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px }
 .mc-card          { padding: 28px }
 
@@ -122,12 +118,53 @@ input, select, button { font-family: inherit }
   .mc-db-badge       { padding: 6px }
   .mc-content { padding: 14px 12px }
   .mc-card    { padding: 16px }
-  .mc-admit-diagram { flex: 1 1 100%; min-width: 0 }
-  .mc-admit-form    { min-width: 0; flex-basis: 100% }
-  .mc-admit-grid    { gap: 18px }
   .mc-toasts { top: 12px; right: 12px; left: 12px }
   .mc-notif-panel {
     position: fixed !important; top: 64px !important; left: 12px !important; right: 12px !important;
     width: auto !important;
   }
 }
+
+/* ============================================================
+   Shared portal styles (doctor + patient portals, login screen)
+   ============================================================ */
+.mc-btn:hover:not(:disabled) { filter: brightness(.95) }
+.mc-lift { transition: transform .15s ease, box-shadow .15s ease }
+.mc-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,23,42,.10) !important }
+.mc-nav-item { transition: background .15s, color .15s }
+.mc-nav-item:hover { filter: brightness(.97) }
+.mc-menu-item {
+  width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+  background: none; border: none; cursor: pointer; font-size: 13px; text-align: left;
+}
+.mc-menu-item:hover { background: rgba(127,127,127,.08) }
+.mc-row-hover { transition: background .12s }
+.mc-row-hover:hover { background: rgba(127,127,127,.06) }
+.mc-tabs::-webkit-scrollbar { height: 0 }
+
+.mc-grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 16px }
+.mc-grid-2     { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 18px }
+.mc-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px }
+.mc-split      { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start }
+.mc-form-grid  { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 14px }
+.mc-stack > * + * { margin-top: 18px }
+
+/* login / register */
+.mc-auth { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); overflow-y: auto }
+.mc-auth-brand { padding: 48px clamp(28px, 5vw, 64px); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; color: white; position: relative; overflow: hidden }
+.mc-auth-form  { display: flex; align-items: center; justify-content: center; padding: 32px 20px }
+
+@media (max-width: 1050px) {
+  .mc-split { grid-template-columns: minmax(0, 1fr) }
+}
+@media (max-width: 900px) {
+  .mc-auth { grid-template-columns: minmax(0, 1fr); align-content: start }
+  .mc-auth-brand { padding: 28px 20px; gap: 18px }
+  .mc-auth-brand .mc-auth-portals { display: none }
+}
+@media (max-width: 600px) {
+  .mc-subtitle { display: none }
+  .mc-grid-stats { gap: 12px }
+}
+@media (max-width: 700px) { .mc-hide-sm { display: none } }
+@media (max-width: 640px) { .mc-bodymap { grid-template-columns: minmax(0, 1fr) !important } }

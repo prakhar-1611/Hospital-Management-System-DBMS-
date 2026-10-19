@@ -57,6 +57,13 @@ function saveSession(data) {
 /* ---- auth ---- */
 export const login    = (email, password) => request("/auth/login", { method: "POST", body: { email, password } }).then(saveSession);
 export const register = (form) => request("/auth/register", { method: "POST", body: form }).then(saveSession);
+export const getAuthConfig  = ()           => request("/auth/config");                    // { googleClientId }
+export const googleLogin    = (credential) => request("/auth/google", { method: "POST", body: { credential } }).then(saveSession);
+export const getMe          = ()           => request("/auth/me");
+export const changePassword = (currentPassword, newPassword) =>
+  request("/auth/password", { method: "PUT", body: { currentPassword, newPassword } });
+// keeps the stored user (name / avatar shown in the header) in step with the server
+export function storeUser(u) { localStorage.setItem("user", JSON.stringify(u)); return u; }
 
 /* ---- departments ---- */
 export const getDepartments   = ()         => request("/departments");
@@ -67,6 +74,7 @@ export const deleteDepartment = (id)       => request(`/departments/${id}`, { me
 /* ---- doctors ---- */
 export const getDoctors      = (departmentId) => request(`/doctors${qs({ departmentId })}`);
 export const getAvailability = (id, date)     => request(`/doctors/${id}/availability${qs({ date })}`);
+export const getMyDoctor     = ()             => request("/doctors/me");                    // doctor
 export const createDoctor    = (d)            => request("/doctors", { method: "POST", body: d });
 export const updateDoctor    = (id, d)        => request(`/doctors/${id}`, { method: "PUT", body: d });
 export const deleteDoctor    = (id)           => request(`/doctors/${id}`, { method: "DELETE" });
@@ -74,6 +82,7 @@ export const deleteDoctor    = (id)           => request(`/doctors/${id}`, { met
 /* ---- patients ---- */
 export const getPatients   = (search) => request(`/patients${qs({ search })}`);
 export const createPatient = (p)      => request("/patients", { method: "POST", body: p });        // admin
+export const getPatient    = (id)     => request(`/patients/${id}`);                          // admin, doctor (own patients)
 export const getMyProfile  = ()       => request("/patients/me");
 export const updateProfile = (p)      => request("/patients/me", { method: "PUT", body: p });
 export const deletePatient = (id)     => request(`/patients/${id}`, { method: "DELETE" });          // admin

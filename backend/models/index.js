@@ -13,6 +13,9 @@ const userSchema = new Schema({
   passwordHash: { type: String, required: true, select: false },
   role:         { type: String, enum: ["patient", "doctor", "admin"], required: true },
   phone:        { type: String, trim: true },
+  // "google" for accounts created through Google sign-in (they have a random password hash)
+  authProvider: { type: String, enum: ["local", "google"], default: "local" },
+  avatar:       { type: String, trim: true },
   createdAt:    { type: Date, default: Date.now },
 });
 // never send the hash back to the client
@@ -52,6 +55,10 @@ const patientSchema = new Schema({
   gender:  { type: String, enum: ["Male", "Female", "Other"] },
   contact: { type: String, trim: true },
   address: { type: String, trim: true },
+  // optional medical profile, edited by the patient (patient portal -> My Profile)
+  bloodGroup:       { type: String, enum: ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"] },
+  allergies:        { type: String, trim: true, maxlength: 300 },
+  emergencyContact: { type: String, trim: true, maxlength: 120 },
 });
 // index 5: every request by a patient resolves "my patient profile" with findOne({ userId });
 // unique also guarantees one profile per login account
@@ -66,6 +73,7 @@ const appointmentSchema = new Schema({
   timeSlot:     { type: String, required: true, match: [HHMM, "timeSlot must be HH:MM"] },
   status:       { type: String, enum: ["Scheduled", "Completed", "Cancelled"], default: "Scheduled" },
   reason:       { type: String, trim: true, maxlength: 300 },
+  notes:        { type: String, trim: true, maxlength: 1000 },   // doctor's consultation notes
   createdAt:    { type: Date, default: Date.now },
 });
 // index 6: no two ACTIVE bookings for the same doctor, date and slot.

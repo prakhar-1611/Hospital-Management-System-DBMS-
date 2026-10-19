@@ -59,6 +59,9 @@ r.post("/", requireRole("patient", "admin"), async (q, res, next) => {
     }
     const { doc, date: d, err } = await validateSlot(doctorId, date, timeSlot);
     if (err) return res.status(400).json({ error: err });          // leave / weekday / hours / past date
+    // one person cannot be in two consultations at the same time (index 8 {patientId,date})
+    if (await Appointment.exists({ patientId: patient._id, date: d, timeSlot, status: "Scheduled" }))
+      return res.status(409).json({ error: "There is already an appointment at this time for this patient" });
     const appt = await Appointment.create({ patientId: patient._id, doctorId,
       departmentId: doc.departmentId, date: d, timeSlot, reason });
     res.status(201).json(appt);
@@ -66,20 +69,26 @@ r.post("/", requireRole("patient", "admin"), async (q, res, next) => {
 });
 
 // GET /api/appointments?doctorId&departmentId&status&from&to  (FR6, FR7)
-// patient: own only. doctor and admin: all appointments (read-only for doctors outside their own).
+// patient: own only. doctor: own only (appointments booked with them). admin: all.
 // Index used per filter: patient -> {patientId,date}; doctorId -> {doctorId,date};
 // departmentId -> {departmentId,date}; status (+from/to) -> {status,date}.
 // A date range with no other filter has no index starting with date (collection scan).
 r.get("/", async (q, res, next) => {
   try {
     const filter = {};
+    const { doctorId, departmentId, status, from, to } = q.query;
     if (q.user.role === "patient") {
       const p = await Patient.findOne({ userId: q.user.id });
       if (!p) return res.json([]);
       filter.patientId = p._id;                                     // own only
+      if (doctorId) filter.doctorId = doctorId;
+    } else if (q.user.role === "doctor") {
+      const d = await Doctor.findOne({ userId: q.user.id });
+      if (!d) return res.json([]);
+      filter.doctorId = d._id;                                      // own only, ?doctorId is ignored
+    } else if (doctorId) {
+      filter.doctorId = doctorId;
     }
-    const { doctorId, departmentId, status, from, to } = q.query;
-    if (doctorId) filter.doctorId = doctorId;
     if (departmentId) filter.departmentId = departmentId;
     if (status) filter.status = status;
     if (from || to) {
@@ -87,26 +96,41 @@ r.get("/", async (q, res, next) => {
       if (from) { const f = parseDay(from); if (!f) return res.status(400).json({ error: "from must be YYYY-MM-DD" }); filter.date.$gte = f; }
       if (to)   { const t = parseDay(to);   if (!t) return res.status(400).json({ error: "to must be YYYY-MM-DD" });   filter.date.$lte = t; }
     }
+    // each role gets only the fields it needs from the linked documents
+    const patientFields = q.user.role === "patient" ? "name" : "name contact age gender";
     const list = await Appointment.find(filter)
-      .populate("patientId", "name contact")
-      .populate("doctorId", "name")
-      .populate("departmentId", "name")
+      .populate("patientId", patientFields)
+      .populate("doctorId", "name specialization")
+      .populate("departmentId", "name consultationFee")
       .sort({ date: -1, timeSlot: 1 });
     res.json(list);
   } catch (e) { next(e); }
 });
 
-// PUT /api/appointments/:id  - reschedule or edit reason; status change by doctor (own) or admin
+// PUT /api/appointments/:id
+//   patient (own)  -> reschedule (date, timeSlot) or edit reason, Scheduled only
+//   doctor  (own)  -> status (complete / cancel) and consultation notes only
+//   admin          -> everything
 r.put("/:id", async (q, res, next) => {
   try {
     const appt = await loadAppointment(q, res);
     if (!appt) return;
-    const { date, timeSlot, reason, status } = q.body;
+    const { date, timeSlot, reason, status, notes } = q.body;
 
     if (q.user.role === "patient") {
       if (status !== undefined) return res.status(403).json({ error: "Patients cannot change status" });
+      if (notes !== undefined) return res.status(403).json({ error: "Only the doctor can write consultation notes" });
       if (appt.status !== "Scheduled") return res.status(400).json({ error: "Only scheduled appointments can be changed" });
     }
+    if (q.user.role === "doctor") {
+      if (date !== undefined || timeSlot !== undefined || reason !== undefined)
+        return res.status(403).json({ error: "Doctors can only update status and notes" });
+      if (status !== undefined && status !== appt.status) {
+        if (appt.status !== "Scheduled") return res.status(400).json({ error: "Only scheduled appointments can change status" });
+        if (!["Completed", "Cancelled"].includes(status)) return res.status(400).json({ error: "Invalid status" });
+      }
+    }
+    if (notes !== undefined) appt.notes = notes;
 
     if (date !== undefined || timeSlot !== undefined) {
       const newDate = date ?? appt.date.toISOString().slice(0, 10);

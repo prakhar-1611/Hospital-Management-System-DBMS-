@@ -75,13 +75,6 @@ export const INITIAL_INVOICES = [
   },
 ];
 
-export const DIAGNOSES = {
-  Head:  ["Migraine","Concussion","Vision Loss","Sinusitis"],
-  Torso: ["Chest Pain","Asthma","Arrhythmia","Rib Fracture","Bronchitis"],
-  Arm:   ["Fracture (Radius)","Carpal Tunnel","Dislocation","Burn"],
-  Leg:   ["ACL Tear","Fracture (Femur)","DVT","Sprain"],
-};
-
 export const DAY_NAMES = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 export const DAY_FULL  = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 

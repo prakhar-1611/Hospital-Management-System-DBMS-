@@ -21,10 +21,37 @@ Repository: https://github.com/prakhar-1611/Hospital-Management-System-DBMS-
 ## What it does
 
 - Admin logs in to the portal (JWT) and manages doctors, patients and appointments stored in MongoDB.
-- Admission screen creates a patient and books a doctor slot. Taken slots are hidden, and a double booking is rejected with HTTP 409.
+- Patients book online; a "Help me choose" body map (front / back + categories) routes symptoms to all 12 departments. The admin's Walk-in registration books for walk-ins and phone patients (new or existing). Taken slots are hidden, and a double booking is rejected with HTTP 409.
 - Analytics screen shows seven MongoDB aggregation pipelines.
-- The API also supports patient and doctor roles (booking, own appointments, status updates). Their screens are planned for Review 3, so for now they use the API directly.
+- One sign-in page opens a different portal for each role (see below). Patients can register with email or with Google.
 - **Billing, invoices and payments are front-end only** (React state, no invoices collection, lost on refresh).
+
+## Portals
+
+| Role | Portal | What it shows | Code |
+|---|---|---|---|
+| admin | **MedCare Admin Console** | Everything: dashboard, all appointments, walk-in registration, doctors (with contact details), patients, analytics, billing, settings | `src/admin/` |
+| doctor | **MedCare Clinician Hub** | Today's queue, own appointments (complete / cancel / consultation notes), own patients and their history *with that doctor*, schedule and availability, practice summary | `src/doctor/` |
+| patient | **MyMedCare** | Book (department → doctor → slot → reason), reschedule, cancel, print slips, read doctor's notes, doctor directory, own profile with medical details | `src/patient/` |
+
+Access is enforced by the API, not just the screens:
+
+- `GET /api/appointments` returns a doctor's or patient's **own** appointments only (`?doctorId` is ignored for doctors).
+- `GET /api/patients` and `GET /api/patients/:id` give a doctor only the patients who booked with them; patients get 403.
+- Doctors may change an appointment's status and notes only; patients may reschedule or cancel their own and never write notes.
+- `GET /api/doctors` hides the doctor's login account id from non-admins. Reports stay admin-only.
+
+New endpoints: `GET /api/auth/config`, `POST /api/auth/google`, `GET /api/auth/me`, `PUT /api/auth/password`, `GET /api/doctors/me`, `GET /api/patients/:id`. New optional fields: `appointments.notes`, `patients.bloodGroup / allergies / emergencyContact`, `users.authProvider / avatar` (run `npm run db:validators` to add them to the `$jsonSchema` validators).
+
+### Google sign-in (patients)
+
+The "Continue with Google" button works once the backend has a Google OAuth client ID:
+
+1. Open https://console.cloud.google.com → create a project → **APIs & Services → OAuth consent screen** (External, add your email as a test user).
+2. **Credentials → Create credentials → OAuth client ID → Web application**. Under *Authorized JavaScript origins* add `http://localhost:5173` and `http://localhost`.
+3. Copy the client ID (`…apps.googleusercontent.com`) into `backend/.env` as `GOOGLE_CLIENT_ID=…` and restart the backend.
+
+The first Google sign-in creates a patient account; later ones log the same patient in. The server verifies every Google token. Staff accounts cannot use Google.
 
 ## Database design
 
@@ -75,13 +102,13 @@ npm run dev
 
 Open the URL Vite prints. Set `VITE_API_URL` if the API is not on `http://localhost:5000/api`.
 
-**3. Log in** (admin only for the portal)
+**3. Log in** (each role opens its own portal)
 
 ```
 admin@medcare.com / admin123
 ```
 
-Seeded doctors use password `doctor123` and seeded patients use `patient123` (the seeder prints one example email of each). These accounts work against the API, but the portal accepts admin accounts only.
+Seeded doctors use password `doctor123` and seeded patients use `patient123` (the seeder prints one example email of each). Doctors open the Clinician Hub (e.g. `dr.sarah.smith@medcare.com`) and patients open MyMedCare (e.g. `thomas.iyer1@mail.com`). The sign-in page has one-click demo buttons for all three.
 
 ## Project structure
 
@@ -90,12 +117,16 @@ Hospital-Management-System-DBMS-/
 ├── index.html, vite.config.js, eslint.config.js, package.json
 ├── public/
 ├── src/
-│   ├── App.jsx, App.css, index.css, main.jsx
+│   ├── App.jsx           sign-in + role router (admin / doctor / patient)
+│   ├── App.css, index.css, main.jsx
 │   ├── api.js            fetch + JWT, one function per endpoint
-│   ├── mappers.js        converts API documents to the shapes the components use
+│   ├── mappers.js        converts API documents to the shapes the admin screens use
 │   ├── constants.js
-│   └── components/       Dashboard, Doctors, Patients, Admissions, Analytics,
-│                         Billing (front-end only), Login, Settings, modals
+│   ├── admin/            MedCare Admin Console
+│   ├── doctor/           MedCare Clinician Hub
+│   ├── patient/          MyMedCare (booking wizard, symptom body map)
+│   ├── ui/               shared design system: shell, kit, theme, icons, helpers
+│   └── components/       AuthScreen, Analytics, Billing (front-end only), invoice and payment modals
 └── backend/
     ├── server.js         Express app, error handler (11000 → 409, 121 → 400)
     ├── dns-override.js   optional DNS_SERVERS from .env

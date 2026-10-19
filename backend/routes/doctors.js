@@ -10,10 +10,24 @@ const pick = (obj, keys) => Object.fromEntries(keys.filter(k => obj[k] !== undef
 
 // GET /api/doctors?departmentId=  (FR3) - department name and fee populated
 // with departmentId -> index 3 {departmentId,status}; without -> all 40 doctors
+// Only admins get the doctor's login account (userId, with email + phone for the contact card).
 r.get("/", async (q, res, next) => {
   try {
     const filter = q.query.departmentId ? { departmentId: q.query.departmentId } : {};
-    res.json(await Doctor.find(filter).populate("departmentId", "name consultationFee").sort({ name: 1 }));
+    const admin = q.user.role === "admin";
+    let query = Doctor.find(filter).select(admin ? "" : "-userId").populate("departmentId", "name consultationFee");
+    if (admin) query = query.populate("userId", "email phone");
+    res.json(await query.sort({ name: 1 }));
+  } catch (e) { next(e); }
+});
+
+// GET /api/doctors/me  (doctor) - own profile with department and login email
+r.get("/me", requireRole("doctor"), async (q, res, next) => {
+  try {
+    const doc = await Doctor.findOne({ userId: q.user.id }).populate("departmentId", "name description consultationFee");
+    if (!doc) return res.status(404).json({ error: "Doctor profile not found" });
+    const user = await User.findById(q.user.id);
+    res.json({ ...doc.toJSON(), email: user?.email, phone: user?.phone });
   } catch (e) { next(e); }
 });
 
@@ -65,6 +79,9 @@ r.put("/:id", requireRole("admin", "doctor"), async (q, res, next) => {
     } else {
       fields = fields.concat(["name", "departmentId", "specialization"]);
     }
+    const wh = q.body.workingHours;
+    if (wh && wh.start && wh.end && wh.start >= wh.end)
+      return res.status(400).json({ error: "Working hours must end after they start" });
     doc.set(pick(q.body, fields));
     res.json(await doc.save());
   } catch (e) { next(e); }
