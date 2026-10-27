@@ -10,12 +10,12 @@
    ============================================================ */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
-import { Card, Button, Spinner } from "../ui/kit";
+import { Button, Spinner, Skeleton, SkeletonRows, Notice, Modal } from "../ui/kit";
 import { PORTALS, useTheme, useToasts } from "../ui/theme";
 import PortalShell from "../ui/PortalShell";
 import Icon from "../ui/Icon";
-import { toAppt, PROFILE_FIELDS } from "../ui/records";
-import { todayStr, fmtDate, isPastSlot } from "../ui/dates";
+import { toAppt, byDateAsc, PROFILE_FIELDS } from "../ui/records";
+import { fmtDate, fmtTime, relativeDay, isPastSlot, greeting } from "../ui/dates";
 import PatientOverview from "./PatientOverview";
 import BookAppointment from "./BookAppointment";
 import PatientAppointments from "./PatientAppointments";
@@ -24,7 +24,6 @@ import PatientProfile from "./PatientProfile";
 import RescheduleModal from "./RescheduleModal";
 
 const portal = PORTALS.patient;
-
 
 export default function PatientApp({ user, onLogout, onUserChange }) {
   const { isDark, setIsDark, css } = useTheme("patient");
@@ -38,6 +37,8 @@ export default function PatientApp({ user, onLogout, onUserChange }) {
   const [error, setError] = useState("");
   const [bookPrefill, setBookPrefill] = useState(null);     // { doctorId } from "Book" buttons
   const [reschedule, setReschedule] = useState(null);       // appointment being moved
+  const [cancelling, setCancelling] = useState(null);       // appointment waiting for confirmation
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -60,17 +61,21 @@ export default function PatientApp({ user, onLogout, onUserChange }) {
     try { setAppts((await api.getAppointments()).map(toAppt)); } catch { /* keep the current list */ }
   }, []);
 
-  const upcoming = useMemo(() => appts.filter(a => a.status === "Scheduled" && !isPastSlot(a.date, a.time)), [appts]);
+  const upcoming = useMemo(() => appts.filter(a => a.status === "Scheduled" && !isPastSlot(a.date, a.time)).sort(byDateAsc), [appts]);
   const missing = profile ? PROFILE_FIELDS.filter(([k]) => profile[k] === undefined || profile[k] === null || profile[k] === "") : [];
 
-  async function cancelAppt(a) {
-    if (!confirm(`Cancel your appointment with ${a.doctorName} on ${fmtDate(a.date)}?`)) return;
+  async function cancelAppt() {
+    const a = cancelling;
+    setCancelBusy(true);
     try {
       await api.cancelAppointment(a.id);
       setAppts(list => list.map(x => x.id === a.id ? { ...x, status: "Cancelled" } : x));
       showToast("Appointment cancelled. The slot is free for others.", "success");
+      setCancelling(null);
     } catch (e) {
       showToast(e.message, "error");
+    } finally {
+      setCancelBusy(false);
     }
   }
 
@@ -90,33 +95,53 @@ export default function PatientApp({ user, onLogout, onUserChange }) {
   const startBooking = (prefill = null) => { setBookPrefill(prefill); setSection("book"); };
 
   const nav = [
-    { id: "overview",     label: "Home",            icon: "dashboard" },
+    { id: "overview",     label: "Home",             icon: "dashboard" },
     { id: "book",         label: "Book appointment", icon: "calendarPlus" },
-    { id: "appointments", label: "My appointments", icon: "calendar", badge: upcoming.length || null },
-    { id: "doctors",      label: "Find a doctor",   icon: "stethoscope" },
-    { id: "profile",      label: "My profile",      icon: "user", badge: missing.length ? "!" : null },
+    { id: "appointments", label: "My appointments",  icon: "calendar", badge: upcoming.length || null },
+    { id: "doctors",      label: "Find a doctor",    icon: "stethoscope" },
+    { id: "profile",      label: "My profile",       icon: "user", badge: missing.length ? `${missing.length} missing` : null },
   ];
-  const titles = { overview: "Home", book: "Book an appointment", appointments: "My appointments", doctors: "Find a doctor", profile: "My profile" };
+
+  const next = upcoming[0];
+  const first = (profile?.name || user.name).split(" ")[0];
+  const bookBtn = <Button icon="calendarPlus" onClick={() => startBooking()}>Book a visit</Button>;
+  const meta = {
+    overview: { title: `${greeting()}, ${first}`, actions: bookBtn,
+      finding: profile && (next
+        ? <>Your next visit is <strong>{relativeDay(next.date).toLowerCase()} at {fmtTime(next.time)}</strong> with {next.doctorName}.</>
+        : "You have no upcoming visits.") },
+    book: { title: "Book an appointment", finding: "Choose a department, a doctor and a time. You can reschedule or cancel later at no charge." },
+    appointments: { title: "My appointments", actions: bookBtn,
+      finding: profile && <>{upcoming.length ? <strong>{upcoming.length} upcoming.</strong> : "Nothing upcoming."} Reschedule or cancel any visit before it starts.</> },
+    doctors: { title: "Find a doctor", finding: `${doctors.length} doctors across ${departments.length} departments.` },
+    profile: { title: "My profile", finding: missing.length ? <><strong>{missing.length} detail{missing.length === 1 ? "" : "s"} missing.</strong> Doctors you book with see this record.</> : "Doctors you book with see this record. Nobody else can." },
+  }[section];
+
   const shared = { css, accent: portal.accent, tint: portal.tint, isDark };
 
   let body;
   if (loading && !profile) {
-    body = <Card css={css} style={{ display: "flex", alignItems: "center", gap: 12, color: css.textGray }}><Spinner color={portal.accent}/> Loading your health record…</Card>;
+    body = (
+      <div className="mc-stack" aria-busy="true" aria-label="Loading your appointments">
+        <Skeleton h={150} r={8}/>
+        <div className="mc-grid-stats">{[0, 1, 2, 3].map(i => <Skeleton key={i} h={84} r={8}/>)}</div>
+        <SkeletonRows rows={3} h={56}/>
+      </div>
+    );
   } else if (error && !profile) {
     body = (
-      <Card css={css} style={{ borderColor: "#fecaca" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#991b1b", marginBottom: 12 }}><Icon name="alert"/> Could not load your data: {error}</div>
-        <Button accent={portal.accent} icon="refresh" onClick={load}>Try again</Button>
-      </Card>
+      <Notice tone="negative" style={{ maxWidth: 560 }} action={<Button size="sm" variant="outline" icon="refresh" onClick={load}>Try again</Button>}>
+        <strong>Could not load your record.</strong> {error}
+      </Notice>
     );
   } else if (section === "overview") {
-    body = <PatientOverview {...shared} user={user} profile={profile} appts={appts} upcoming={upcoming} missing={missing}
-      onBook={startBooking} onNavigate={setSection} onCancel={cancelAppt} onReschedule={setReschedule}/>;
+    body = <PatientOverview {...shared} profile={profile} appts={appts} upcoming={upcoming} missing={missing}
+      onBook={startBooking} onNavigate={setSection} onCancel={setCancelling} onReschedule={setReschedule}/>;
   } else if (section === "book") {
-    body = <BookAppointment {...shared} key={bookPrefill?.doctorId || "new"} departments={departments} doctors={doctors} appts={appts} prefill={bookPrefill}
+    body = <BookAppointment {...shared} key={bookPrefill?.doctorId || "new"} departments={departments} doctors={doctors} prefill={bookPrefill}
       showToast={showToast} onBooked={reloadAppts} onNavigate={setSection}/>;
   } else if (section === "appointments") {
-    body = <PatientAppointments {...shared} profile={profile} appts={appts} onCancel={cancelAppt} onReschedule={setReschedule} onBook={startBooking}/>;
+    body = <PatientAppointments {...shared} profile={profile} appts={appts} onCancel={setCancelling} onReschedule={setReschedule} onBook={startBooking}/>;
   } else if (section === "doctors") {
     body = <FindDoctors {...shared} doctors={doctors} departments={departments} onBook={(doctorId) => startBooking({ doctorId })}/>;
   } else {
@@ -127,24 +152,40 @@ export default function PatientApp({ user, onLogout, onUserChange }) {
     <>
       {toastLayer}
       <PortalShell portal={portal} nav={nav} section={section} onNavigate={(s) => { if (s === "book") setBookPrefill(null); setSection(s); }} user={user} roleLabel="Patient"
-        title={titles[section]} subtitle={fmtDate(todayStr(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        title={meta.title} subtitle={meta.finding || undefined} titleActions={meta.actions}
         css={css} isDark={isDark} setIsDark={setIsDark} onLogout={onLogout}
-        headerRight={section !== "book" && (
-          <span className="mc-hide-sm"><Button accent={portal.accent} icon="plus" onClick={() => startBooking()}>Book visit</Button></span>
-        )}
+        headerRight={
+          <button onClick={load} title="Refresh" aria-label="Refresh data" className="mc-iconbtn">
+            {loading ? <Spinner size={15}/> : <Icon name="refresh" size={17}/>}
+          </button>
+        }
         sidebarExtra={
-          <div style={{ padding: 14, borderRadius: 12, background: "#fef2f2", color: "#991b1b", fontSize: 12.5, border: "1px solid #fecaca" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}><Icon name="ambulance" size={16}/> Emergency? Call 108</div>
-            <div style={{ opacity: .9 }}>Do not wait for an appointment. Our emergency ward is open 24×7.</div>
+          <div className="mc-emergency" role="note">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 600, marginBottom: 2 }}><Icon name="ambulance" size={16}/> Emergency? Call <a href="tel:108">108</a></div>
+            Do not wait for an appointment. The emergency ward is open day and night.
           </div>
         }>
         {body}
       </PortalShell>
+
       {reschedule && (
-        <RescheduleModal {...shared} appt={reschedule} doctor={doctors.find(d => d._id === reschedule.doctorId)}
+        <RescheduleModal appt={reschedule} doctor={doctors.find(d => d._id === reschedule.doctorId)}
           onClose={() => setReschedule(null)}
           onDone={(u) => { setAppts(list => list.map(x => x.id === u.id ? { ...x, date: u.date, time: u.time } : x)); setReschedule(null); showToast("Appointment moved", "success"); }}
           showToast={showToast}/>
+      )}
+      {cancelling && (
+        <Modal width={460} title="Cancel this appointment?" onClose={() => !cancelBusy && setCancelling(null)}
+          footer={<>
+            <Button variant="ghost" disabled={cancelBusy} onClick={() => setCancelling(null)}>Keep appointment</Button>
+            <Button variant="danger" icon="xCircle" disabled={cancelBusy} onClick={cancelAppt}>{cancelBusy ? "Cancelling" : "Cancel appointment"}</Button>
+          </>}>
+          <p style={{ fontSize: 14 }}>
+            <strong>{cancelling.doctorName}</strong>, {cancelling.deptName}<br/>
+            {fmtDate(cancelling.date, { weekday: "long", day: "numeric", month: "long" })} at {fmtTime(cancelling.time)}
+          </p>
+          <p style={{ fontSize: 13.5, color: "var(--muted)", marginTop: 10 }}>The slot is released for other patients. You can book again at any time.</p>
+        </Modal>
       )}
     </>
   );

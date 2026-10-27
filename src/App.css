@@ -1,170 +1,303 @@
 /* ============================================================
-   App.css — layout and responsive rules for the MedCare admin portal.
-   Breakpoints:  > 900px  fixed 260px sidebar
-                 <= 900px sidebar becomes an off-canvas drawer (hamburger)
-                 <= 600px compact header (search on its own row), smaller padding
-   Colours stay in the inline styles (light / dark theme tokens in constants.js).
+   App.css — "framed sheet" layout and component styles for all three
+   portals. Tokens (--frame, --sheet, --ink, --accent ...) are set per
+   portal by PortalShell, so one stylesheet serves every theme.
+   Breakpoints: > 900px  fixed sidebar, page on an inset white sheet
+                <= 900px sidebar becomes a drawer, sheet fills the screen
+                <= 600px tighter padding
+   Motion: state changes only, 120-200ms, exponential ease-out.
    ============================================================ */
 
-@keyframes slideUp   { from{transform:translate(-50%,-44%) scale(.97);opacity:0} to{transform:translate(-50%,-50%) scale(1);opacity:1} }
-@keyframes menuSlide { from{opacity:0;transform:translateY(-6px) scale(.98)} to{opacity:1;transform:translateY(0) scale(1)} }
-@keyframes slideIn   { from{opacity:0;transform:translateX(110%) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
-@keyframes fadeIn    { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
-@keyframes spin      { to { transform: rotate(360deg) } }
+/* ---------- tokens that do not change per portal ---------- */
+:root {
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --gap: 24px;
+  /* fallbacks so screens outside the shell (sign-in) still read well */
+  --frame: #f2f4fa; --sheet: #fff; --raised: #f6f7f9; --active: #ebedf0; --border: #e4e7eb; --rule: #eff1f4;
+  --control: #c9ccd2; --ink: #131416; --muted: #5d5f60; --accent: #4361ee; --accent-ink: #4361ee; --accent-soft: rgba(67, 97, 238, .1);
+  --positive: #1e7b4f; --negative: #c4242a; --warning: #92400e; --scrim: rgba(15, 23, 42, .45);
+  --pill-positive-bg: #dcfae5; --pill-positive-fg: #0b4a22; --pill-negative-bg: #ffedea; --pill-negative-fg: #831c1e;
+  --pill-warning-bg: #fff3d1; --pill-warning-fg: #7a3a05; --pill-info-bg: #e4edff; --pill-info-fg: #1e3a8a;
+  --pill-neutral-bg: #ebedee; --pill-neutral-fg: #353736;
+}
+/* the sign-in page sits outside the shell, so it follows the system theme through these fallbacks */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --frame: #0d1117; --sheet: #151b23; --raised: #1b222c; --active: #232b36; --border: #262d37; --rule: #1f2630;
+    --control: #3a4350; --ink: #e8eaed; --muted: #9aa3ad; --accent: #6b85f5; --accent-ink: #9fb0f8; --accent-soft: rgba(107, 133, 245, .2);
+    --positive: #4ade80; --negative: #f87171; --warning: #fbbf24; --scrim: rgba(0, 0, 0, .6);
+    --pill-positive-bg: #12301f; --pill-positive-fg: #86efac; --pill-negative-bg: #3a1618; --pill-negative-fg: #fca5a5;
+    --pill-warning-bg: #33270c; --pill-warning-fg: #fcd34d; --pill-info-bg: #16253f; --pill-info-fg: #93b4ff;
+    --pill-neutral-bg: #232b36; --pill-neutral-fg: #c3cad3;
+    color-scheme: dark;
+  }
+}
 
-button:active { transform: scale(.97) }
-::-webkit-scrollbar { width: 6px; height: 6px }
-::-webkit-scrollbar-thumb { background: #c1c8d4; border-radius: 3px }
-input, select, button { font-family: inherit }
+@keyframes fade     { from { opacity: 0 } to { opacity: 1 } }
+@keyframes dialog   { from { opacity: 0; transform: translateY(8px) scale(.97) } to { opacity: 1; transform: none } }
+@keyframes pop      { from { opacity: 0; transform: translateY(-4px) scale(.97) } to { opacity: 1; transform: none } }
+@keyframes toast    { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: none } }
+@keyframes pulse    { from { opacity: .55 } to { opacity: 1 } }
+@keyframes spin     { to { transform: rotate(360deg) } }
+/* names kept for the older billing and notification components */
+@keyframes slideUp   { from { transform: translate(-50%, -46%) scale(.98); opacity: 0 } to { transform: translate(-50%, -50%) scale(1); opacity: 1 } }
+@keyframes menuSlide { from { opacity: 0; transform: translateY(-4px) } to { opacity: 1; transform: none } }
+@keyframes slideIn   { from { opacity: 0; transform: translateY(-8px) } to { opacity: 1; transform: none } }
+@keyframes fadeIn    { from { opacity: 0 } to { opacity: 1 } }
+
+button, input, select, textarea { font-family: inherit }
+::selection { background: color-mix(in srgb, var(--accent) 26%, transparent) }
+
+/* keyboard focus is always visible and uses the portal accent */
+:focus-visible { outline: 2px solid var(--accent) !important; outline-offset: 2px }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0 }
 
 /* ---------- shell ---------- */
 .mc-shell {
-  display: flex;
-  height: 100vh;
-  height: 100dvh;
-  width: 100%;
-  overflow: hidden;
-  font-family: 'Inter', 'Segoe UI', sans-serif;
-  transition: background .3s, color .3s;
+  display: flex; height: 100vh; height: 100dvh; width: 100%; overflow: hidden;
+  background: var(--frame); color: var(--ink);
+  font-size: 14px; line-height: 1.5; font-variant-numeric: tabular-nums;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left);
 }
+.mc-skip { position: absolute; left: -9999px; top: 8px; z-index: 100000; background: var(--sheet); color: var(--ink); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border) }
+.mc-skip:focus { left: 8px }
+
 .mc-sidebar {
-  width: 260px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  height: 100%;
-  overflow-y: auto;
-  transition: transform .25s ease;
+  width: 228px; flex-shrink: 0; display: flex; flex-direction: column;
+  padding: 14px 12px 12px; height: 100%; overflow-y: auto; scrollbar-width: thin;
 }
-.mc-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  overflow: hidden;
-}
-.mc-header {
-  min-height: 72px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 28px;
-  flex-shrink: 0;
-}
-.mc-title   { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0 }
-.mc-search  { flex: 1; max-width: 360px; margin: 0 auto }
-.mc-header-actions { display: flex; align-items: center; gap: 16px; flex-shrink: 0 }
-.mc-content { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 28px }
+.mc-brand { display: flex; align-items: center; gap: 10px; padding: 2px 8px 20px }
+.mc-mark { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: #fff; display: grid; place-items: center; flex-shrink: 0 }
+.mc-brand-name { font-weight: 600; font-size: 14px; line-height: 1.25; letter-spacing: -0.005em }
+.mc-brand-sub { font-size: 12px; color: var(--muted) }
 
-.mc-db-badge {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 10px; border-radius: 20px;
-  font-size: 11px; font-weight: 600; white-space: nowrap;
+.mc-nav {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 0 10px; margin-bottom: 2px;
+  border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 14px; font-weight: 500; cursor: pointer;
+  transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out);
 }
-.mc-banner {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
-  gap: 10px; padding: 12px 16px; border-radius: 10px; margin-bottom: 18px; font-size: 13px;
+.mc-nav--on { background: var(--active); color: var(--ink); font-weight: 600 }
+.mc-nav-badge { font-size: 12px; min-width: 20px; text-align: center; color: var(--ink); background: var(--sheet); border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; line-height: 18px; font-weight: 500 }
+.mc-account { display: flex; align-items: center; gap: 10px; padding: 8px; margin-top: 10px }
+.mc-account-name { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.mc-account-role { font-size: 12px; color: var(--muted) }
+.mc-sidebar-note { font-size: 12.5px; color: var(--muted); padding: 8px 10px; line-height: 1.5 }
+
+.mc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100% }
+.mc-topbar { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 16px }
+.mc-topbar-title { display: none; font-weight: 600; font-size: 14px }
+.mc-topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 4px }
+.mc-topbar .mc-hamburger { display: none }
+
+.mc-sheet {
+  flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: thin;
+  background: var(--sheet); border: 1px solid var(--border); border-radius: 16px; margin: 0 8px 8px 0;
+  -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
 }
-.mc-toasts {
-  position: fixed; top: 20px; right: 20px; z-index: 99999; pointer-events: none;
-  max-width: calc(100vw - 24px);
+.mc-sheet:focus { outline: none !important }
+.mc-sheet-inner { max-width: 1280px; margin: 0 auto; padding: 24px 24px calc(32px + env(safe-area-inset-bottom)) }
+.mc-titlerow { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: var(--gap) }
+.mc-h1 { font-size: 22px; font-weight: 600; line-height: 1.25; letter-spacing: -0.012em }
+.mc-finding { font-size: 14px; color: var(--muted); margin-top: 4px; max-width: 70ch }
+.mc-finding strong { color: var(--ink); font-weight: 600 }
+.mc-titleactions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+
+/* ---------- small controls ---------- */
+.mc-iconbtn { width: 32px; height: 32px; display: inline-grid; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; flex-shrink: 0; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out), transform 120ms var(--ease-out) }
+.mc-iconbtn:active { transform: scale(.94) }
+.mc-avatarbtn { border: 0; background: none; padding: 0; border-radius: 50%; cursor: pointer; display: block; margin-left: 4px }
+.mc-popover { position: absolute; top: 38px; right: 0; width: 248px; background: var(--sheet); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); z-index: 1000; overflow: hidden; transform-origin: top right; animation: pop 140ms var(--ease-out) }
+.mc-menuitem { display: flex; gap: 10px; align-items: center; width: 100%; padding: 10px 14px; border: 0; background: none; font-size: 13.5px; cursor: pointer; color: var(--ink); text-align: left }
+
+.mc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap;
+  min-height: 32px; padding: 0 12px; border-radius: 6px; border: 1px solid transparent; cursor: pointer;
+  font-size: 13.5px; font-weight: 500; line-height: 1;
+  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out), transform 120ms var(--ease-out), opacity 120ms;
 }
-.mc-toasts > div { min-width: 0 !important; max-width: 100% }
+.mc-btn:active:not(:disabled) { transform: scale(.97) }
+.mc-btn:disabled { opacity: .5; cursor: not-allowed }
+.mc-btn--sm { min-height: 28px; padding: 0 10px; font-size: 12.5px }
+.mc-btn--lg { min-height: 40px; padding: 0 18px; font-size: 14px }
+.mc-btn--primary { background: var(--accent); color: #fff }
+.mc-btn--success { background: var(--positive); color: #fff }
+.mc-btn--outline { background: transparent; border-color: var(--control); color: var(--ink) }
+.mc-btn--soft { background: var(--active); color: var(--ink) }
+.mc-btn--ghost { background: transparent; color: var(--muted) }
+.mc-btn--danger { background: transparent; border-color: color-mix(in srgb, var(--negative) 45%, transparent); color: var(--negative) }
 
-/* hidden on desktop */
-.mc-hamburger, .mc-drawer-close, .mc-backdrop { display: none }
+.mc-pill { display: inline-flex; align-items: center; padding: 1px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 20px; white-space: nowrap }
 
-.mc-form-row      { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 14px }
-.mc-card          { padding: 28px }
+.mc-stat { display: flex; flex-direction: column; gap: 2px; text-align: left; padding: 14px 16px; background: var(--sheet); border: 1px solid var(--border); border-radius: 8px; color: inherit; min-width: 0; font-size: inherit }
+.mc-stat-label { font-size: 13px; color: var(--muted) }
+.mc-stat-value { font-size: 28px; font-weight: 400; line-height: 1.2; letter-spacing: -0.01em; color: var(--ink) }
+.mc-stat-hint { font-size: 12.5px; color: var(--muted) }
+.mc-stat--click { cursor: pointer; transition: border-color 120ms var(--ease-out), background-color 120ms var(--ease-out) }
 
-/* tables always scroll inside their own container, never the page */
-.mc-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100% }
+.mc-tabs { display: flex; gap: 22px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none }
+.mc-tab { position: relative; min-height: 40px; padding: 0 2px; border: 0; background: none; font-size: 14px; font-weight: 500; color: var(--muted); cursor: pointer; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; transition: color 120ms var(--ease-out) }
+.mc-tab--on { color: var(--ink); font-weight: 600 }
+.mc-tab--on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: var(--accent); border-radius: 2px 2px 0 0 }
+.mc-tab-count { font-size: 12px; font-weight: 400; color: var(--muted) }
 
-/* ---------- tablet and below: drawer ---------- */
-@media (max-width: 900px) {
-  .mc-sidebar {
-    position: fixed; top: 0; left: 0; bottom: 0; z-index: 15000;
-    transform: translateX(-100%);
-    box-shadow: 0 0 40px rgba(0,0,0,.25);
-  }
-  .mc-sidebar.open { transform: translateX(0) }
-  .mc-backdrop {
-    display: block; position: fixed; inset: 0; z-index: 14999;
-    background: rgba(0,0,0,.45);
-  }
-  .mc-hamburger {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 38px; height: 38px; border-radius: 10px; background: transparent;
-    font-size: 18px; cursor: pointer; flex-shrink: 0;
-  }
-  .mc-drawer-close {
-    display: inline-block; margin-left: auto; background: none; border: none;
-    font-size: 18px; cursor: pointer;
-  }
-  .mc-header  { padding: 10px 16px; gap: 12px }
-  .mc-content { padding: 20px 16px }
-  .mc-header-actions { margin-left: auto }
-}
+.mc-seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--active); border-radius: 8px }
+.mc-seg-opt { display: inline-flex; align-items: center; gap: 7px; min-height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 500; cursor: pointer; transition: background-color 120ms var(--ease-out), color 120ms var(--ease-out) }
+.mc-seg-opt--on { background: var(--sheet); color: var(--ink); box-shadow: 0 0 0 1px var(--border) }
+.mc-seg-dot { width: 8px; height: 8px; border-radius: 50% }
 
-/* ---------- phones ---------- */
-@media (max-width: 600px) {
-  .mc-header { flex-wrap: wrap; row-gap: 8px }
-  .mc-title  { font-size: 17px !important; flex: 1 }
-  .mc-search { order: 3; flex: 1 1 100%; max-width: none; margin: 0 }
-  .mc-header-actions { gap: 10px }
-  .mc-db-badge-text  { display: none }          /* colour dot only; full text in tooltip */
-  .mc-db-badge       { padding: 6px }
-  .mc-content { padding: 14px 12px }
-  .mc-card    { padding: 16px }
-  .mc-toasts { top: 12px; right: 12px; left: 12px }
-  .mc-notif-panel {
-    position: fixed !important; top: 64px !important; left: 12px !important; right: 12px !important;
-    width: auto !important;
-  }
-}
+.mc-scrim { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; padding: 12px; z-index: 20000; animation: fade 150ms ease-out }
+.mc-dialog { background: var(--sheet); color: var(--ink); border: 1px solid var(--border); border-radius: 12px; max-height: min(88vh, 100%); display: flex; flex-direction: column; box-shadow: 0 16px 48px rgba(0, 0, 0, .24); animation: dialog 200ms var(--ease-out) }
 
-/* ============================================================
-   Shared portal styles (doctor + patient portals, login screen)
-   ============================================================ */
-.mc-btn:hover:not(:disabled) { filter: brightness(.95) }
-.mc-lift { transition: transform .15s ease, box-shadow .15s ease }
-.mc-lift:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(15,23,42,.10) !important }
-.mc-nav-item { transition: background .15s, color .15s }
-.mc-nav-item:hover { filter: brightness(.97) }
-.mc-menu-item {
-  width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 14px;
-  background: none; border: none; cursor: pointer; font-size: 13px; text-align: left;
-}
-.mc-menu-item:hover { background: rgba(127,127,127,.08) }
-.mc-row-hover { transition: background .12s }
-.mc-row-hover:hover { background: rgba(127,127,127,.06) }
-.mc-tabs::-webkit-scrollbar { height: 0 }
+.mc-spin { display: inline-block; border-radius: 50%; animation: spin .7s linear infinite }
+.mc-skel { display: block; background: var(--active); animation: pulse 1.3s ease-in-out infinite alternate }
 
-.mc-grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); gap: 16px }
-.mc-grid-2     { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 18px }
+.mc-toasts { position: fixed; top: 12px; right: 12px; z-index: 99999; display: grid; gap: 8px; pointer-events: none; max-width: calc(100vw - 24px) }
+.mc-banner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding: 10px 14px; border-radius: 8px; margin-bottom: var(--gap); font-size: 13.5px }
+.mc-db-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; white-space: nowrap }
+
+/* ---------- layout helpers ---------- */
+.mc-stack > * + * { margin-top: var(--gap) }
+.mc-grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: var(--gap) }
+.mc-grid-2     { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: var(--gap) }
 .mc-grid-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 16px }
-.mc-split      { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 18px; align-items: start }
+.mc-split      { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: var(--gap); align-items: start }
 .mc-form-grid  { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr)); gap: 14px }
-.mc-stack > * + * { margin-top: 18px }
+.mc-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100% }
+.mc-sheet table { border-collapse: collapse; width: 100% }
+.mc-sheet th { text-align: left; font-weight: 500; font-size: 12.5px; color: var(--muted); white-space: nowrap }
+.mc-row-hover { transition: background-color 100ms }
 
-/* login / register */
-.mc-auth { position: fixed; inset: 0; display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); overflow-y: auto }
-.mc-auth-brand { padding: 48px clamp(28px, 5vw, 64px); display: flex; flex-direction: column; justify-content: space-between; gap: 32px; color: white; position: relative; overflow: hidden }
-.mc-auth-form  { display: flex; align-items: center; justify-content: center; padding: 32px 20px }
-
-@media (max-width: 1050px) {
-  .mc-split { grid-template-columns: minmax(0, 1fr) }
+/* ---------- sign-in: the frame holds the brand, the sheet holds the form ---------- */
+.mc-auth {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 560px); height: 100vh; height: 100dvh; overflow-y: auto;
+  background: var(--frame); color: var(--ink); font-size: 14px; line-height: 1.5;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
-@media (max-width: 900px) {
+.mc-auth-frame { display: flex; flex-direction: column; justify-content: space-between; gap: 40px; padding: 32px 48px 28px }
+.mc-auth-sheet {
+  display: flex; align-items: center; justify-content: center; padding: 40px 32px; margin: 8px 8px 8px 0;
+  background: var(--sheet); border: 1px solid var(--border); border-radius: 16px; min-height: 0;
+}
+.mc-auth-field { margin-bottom: 14px; min-width: 0 }
+.mc-auth-field label { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px }
+.mc-input {
+  width: 100%; min-height: 40px; padding: 8px 12px; border: 1px solid var(--control); border-radius: 6px;
+  background: var(--sheet); color: var(--ink); font: inherit; font-size: 14px; outline: none;
+  transition: border-color 120ms var(--ease-out);
+}
+.mc-input::placeholder { color: color-mix(in srgb, var(--muted) 80%, transparent) }
+.mc-input:focus { border-color: var(--accent) }
+@media (max-width: 960px) {
   .mc-auth { grid-template-columns: minmax(0, 1fr); align-content: start }
-  .mc-auth-brand { padding: 28px 20px; gap: 18px }
-  .mc-auth-brand .mc-auth-portals { display: none }
+  .mc-auth-frame { padding: 20px 16px 16px; gap: 0 }
+  .mc-auth-intro { display: none }
+  .mc-auth-frame > :last-child { margin-top: 10px; font-size: 13px }
+  .mc-auth-sheet { margin: 0; border-radius: 16px 16px 0 0; border-width: 1px 0 0; padding: 24px 16px 32px; align-items: flex-start; min-height: calc(100dvh - 110px) }
 }
+
+/* ---------- choices: selectable cards and toggle chips (selection = accent ring + a check, never colour alone) ---------- */
+.mc-choice {
+  display: flex; flex-direction: column; gap: 12px; width: 100%; min-width: 0; text-align: left; padding: 16px;
+  background: var(--sheet); color: var(--ink); border: 1px solid var(--border); border-radius: 8px; font: inherit; cursor: pointer;
+  transition: border-color 120ms var(--ease-out), box-shadow 120ms var(--ease-out);
+}
+.mc-choice--on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
+.mc-choice[aria-disabled="true"], .mc-choice:disabled { opacity: .55; cursor: not-allowed }
+.mc-chip {
+  display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 999px;
+  border: 1px solid var(--control); background: var(--sheet); color: var(--ink); font: inherit; font-size: 13.5px; font-weight: 500; cursor: pointer; text-align: left;
+  transition: background-color 120ms var(--ease-out), border-color 120ms var(--ease-out);
+}
+.mc-chip--on { border-color: var(--accent); background: var(--accent-soft) }
+.mc-list-btn {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; padding: 10px 12px; text-align: left;
+  border: 0; border-bottom: 1px solid var(--rule); background: transparent; color: var(--ink); font: inherit; cursor: pointer;
+  transition: background-color 100ms var(--ease-out);
+}
+
+/* the "where does it hurt" figure: regions tile the body, the sheet colour draws the seams */
+.mc-body-part { fill: var(--active); stroke: var(--sheet); stroke-width: 2.5; stroke-linejoin: round; cursor: pointer; transition: fill 140ms var(--ease-out) }
+.mc-body-part--hot { fill: color-mix(in srgb, var(--accent) 28%, var(--active)) }
+.mc-body-part--on { fill: var(--accent) }
+.mc-body-part:focus { outline: none !important }
+.mc-body-part:focus-visible { stroke: var(--ink); stroke-width: 2 }
+
+.mc-emergency { margin: 0 2px; padding: 12px; border-radius: 8px; background: var(--pill-negative-bg); color: var(--pill-negative-fg); font-size: 13px; line-height: 1.45 }
+.mc-emergency a { color: inherit; font-weight: 600 }
+
+/* hover only where a pointer can hover: touch screens never get a stuck hover */
+@media (hover: hover) and (pointer: fine) {
+  .mc-choice:not(.mc-choice--on):not(:disabled):not([aria-disabled="true"]):hover { border-color: var(--control) }
+  .mc-chip:not(.mc-chip--on):hover { background: var(--raised) }
+  .mc-list-btn:hover { background: var(--raised) }
+  .mc-body-part:not(.mc-body-part--on):hover { fill: color-mix(in srgb, var(--accent) 28%, var(--active)) }
+  .mc-nav:hover:not(.mc-nav--on) { background: color-mix(in srgb, var(--active) 65%, transparent); color: var(--ink) }
+  .mc-iconbtn:hover, .mc-menuitem:hover { background: var(--active); color: var(--ink) }
+  .mc-btn--primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 88%, #000) }
+  .mc-btn--success:hover:not(:disabled) { background: color-mix(in srgb, var(--positive) 88%, #000) }
+  .mc-btn--outline:hover:not(:disabled), .mc-btn--ghost:hover:not(:disabled) { background: var(--raised); color: var(--ink) }
+  .mc-btn--soft:hover:not(:disabled) { background: color-mix(in srgb, var(--active) 82%, var(--ink)) }
+  .mc-btn--danger:hover:not(:disabled) { background: color-mix(in srgb, var(--negative) 8%, transparent) }
+  .mc-tab:hover:not(.mc-tab--on), .mc-seg-opt:hover:not(.mc-seg-opt--on) { color: var(--ink) }
+  .mc-stat--click:hover { border-color: var(--control); background: var(--raised) }
+  .mc-row-hover:hover { background: var(--raised) }
+}
+
+/* ---------- phone and tablet ---------- */
+@media (max-width: 1050px) { .mc-split { grid-template-columns: minmax(0, 1fr) } }
+@media (max-width: 900px) {
+  .mc-sidebar { position: fixed; top: 0; left: 0; bottom: 0; z-index: 15000; width: 280px; max-width: 86vw; background: var(--frame); transform: translateX(-100%); transition: transform 220ms var(--ease-out); padding-top: calc(14px + env(safe-area-inset-top)) }
+  .mc-sidebar.open { transform: none; box-shadow: 0 0 40px rgba(0, 0, 0, .25) }
+  .mc-backdrop { position: fixed; inset: 0; z-index: 14999; background: var(--scrim); animation: fade 150ms ease-out }
+  .mc-topbar .mc-hamburger { display: inline-grid }
+  .mc-topbar-title { display: inline }
+  .mc-sheet { margin: 0; border-radius: 16px 16px 0 0; border-width: 1px 0 0 }
+  .mc-sheet-inner { padding: 18px 16px calc(28px + env(safe-area-inset-bottom)) }
+  .mc-drawer-close { margin-left: auto }
+}
+@media (min-width: 901px) { .mc-backdrop, .mc-drawer-close { display: none } }
 @media (max-width: 600px) {
-  .mc-subtitle { display: none }
-  .mc-grid-stats { gap: 12px }
+  .mc-h1 { font-size: 20px }
+  .mc-stat-value { font-size: 24px }
+  .mc-toasts { left: 12px }
+  .mc-hide-sm { display: none !important }
+  .mc-db-badge-text { display: none }
+  .mc-notif-panel { position: fixed !important; top: 56px !important; left: 12px !important; right: 12px !important; width: auto !important }
 }
-@media (max-width: 700px) { .mc-hide-sm { display: none } }
 @media (max-width: 640px) { .mc-bodymap { grid-template-columns: minmax(0, 1fr) !important } }
+
+/* touch screens: bigger targets, and inputs at 16px so iOS never zooms the page */
+@media (pointer: coarse) {
+  .mc-btn { min-height: 40px }
+  .mc-btn--sm { min-height: 36px }
+  .mc-iconbtn { width: 40px; height: 40px }
+  .mc-nav { min-height: 42px }
+  .mc-tab { min-height: 44px }
+  .mc-seg-opt { min-height: 36px }
+  .mc-chip { min-height: 40px }
+  input, select, textarea { font-size: 16px !important }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important }
+  .mc-skel { animation: none }
+}
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0 }
+
+/* ---------- data tables: rules and alignment, no zebra, no header band ---------- */
+.mc-table th { padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: left }
+.mc-table td { padding: 0 12px; height: 48px; border-bottom: 1px solid var(--rule); font-size: 14px; vertical-align: middle }
+.mc-table tbody tr:last-child td { border-bottom: 0 }
+.mc-table .num, .mc-table th.num { text-align: right }
+.mc-table .sub { display: block; font-size: 12.5px; color: var(--muted); line-height: 1.3 }
+.mc-table .clip { max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.mc-table tr[role="button"], .mc-table tr.click { cursor: pointer }
+
+/* ---------- a ranked list drawn as bars in the portal accent ---------- */
+.mc-bars { display: grid; gap: 12px }
+.mc-bar-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; font-size: 13.5px }
+.mc-bar-track { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: var(--active); overflow: hidden }
+.mc-bar-fill { display: block; height: 100%; border-radius: 3px; background: var(--accent); transform-origin: left; animation: grow 400ms var(--ease-out) }
+@keyframes grow { from { transform: scaleX(0) } to { transform: none } }

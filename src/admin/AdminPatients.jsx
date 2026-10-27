@@ -1,16 +1,16 @@
 /* ============================================================
    AdminPatients.jsx — every registered patient: search, latest visit,
-   full record, invoice (front-end billing) and a downloadable slip.
+   full record, invoice (browser-only billing) and a downloadable slip.
    ============================================================ */
 import { useState } from "react";
-import { Card, SectionTitle, Avatar, Badge, Button, EmptyState } from "../ui/kit";
+import { Card, Avatar, Badge, Button, EmptyState } from "../ui/kit";
 import { inputStyle } from "../ui/theme";
 import Icon from "../ui/Icon";
 import { fmtDate } from "../ui/dates";
 
 const PAGE = 40;
 
-export default function AdminPatients({ css, accent, patients, invoices, onOpenPatient, onDownload, onCreateInvoice, onViewInvoice }) {
+export default function AdminPatients({ css, patients, invoices, onOpenPatient, onDownload, onCreateInvoice, onViewInvoice }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("recent");
   const [limit, setLimit] = useState(PAGE);
@@ -20,53 +20,47 @@ export default function AdminPatients({ css, accent, patients, invoices, onOpenP
     .sort((a, b) => sort === "name" ? a.name.localeCompare(b.name) : sort === "visits" ? b.visits - a.visits : (b.lastVisit || "").localeCompare(a.lastVisit || ""));
 
   return (
-    <Card css={css}>
-      <SectionTitle css={css} title={`${patients.length} patients`} subtitle="Patients register themselves online or at the walk-in desk"
-        right={
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ position: "relative", width: 250 }}>
-              <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: css.textGray }}><Icon name="search" size={16}/></span>
-              <input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Name, phone, ID or reason" style={{ ...inputStyle(css), paddingLeft: 34 }}/>
-            </div>
-            <select value={sort} onChange={e => setSort(e.target.value)} style={{ ...inputStyle(css), width: 160 }} aria-label="Sort">
-              <option value="recent">Latest visit</option><option value="name">Name (A–Z)</option><option value="visits">Most visits</option>
-            </select>
-          </div>
-        }/>
-      {rows.length === 0 ? <EmptyState css={css} icon="users" title="No patients match"/> : (
+    <div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ position: "relative", flex: "1 1 260px", maxWidth: 380 }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", display: "flex" }}><Icon name="search" size={16}/></span>
+          <input value={q} onChange={e => { setQ(e.target.value); setLimit(PAGE); }} placeholder="Name, phone, patient ID or reason" aria-label="Search patients" style={{ ...inputStyle(css), paddingLeft: 32 }}/>
+        </div>
+        <select value={sort} onChange={e => setSort(e.target.value)} style={{ ...inputStyle(css), width: 170 }} aria-label="Sort patients">
+          <option value="recent">Latest visit</option><option value="name">Name (A to Z)</option><option value="visits">Most visits</option>
+        </select>
+        <span style={{ fontSize: 13, color: "var(--muted)", marginLeft: "auto" }}>{rows.length} of {patients.length}</span>
+      </div>
+      {rows.length === 0 ? <Card><EmptyState icon="users" title="No patients match" body="Try a name, phone number or patient ID."/></Card> : (
         <>
           <div className="mc-table-wrap">
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 920 }}>
-              <thead><tr>{["Patient", "Age / Gender", "Contact", "Visits", "Latest visit", "Doctor", "Status", "Invoice", ""].map(h => (
-                <th key={h} style={{ textAlign: "left", padding: "9px 10px", fontSize: 12, color: css.textGray, fontWeight: 600, borderBottom: `1px solid ${css.border}` }}>{h}</th>
-              ))}</tr></thead>
+            <table className="mc-table" style={{ minWidth: 900 }}>
+              <thead><tr><th>Patient</th><th>Contact</th><th className="num">Visits</th><th>Latest visit</th><th>Status</th><th>Invoice</th><th><span className="sr-only">Actions</span></th></tr></thead>
               <tbody>
                 {rows.slice(0, limit).map(p => {
                   const inv = invoices.find(i => i.patientId === p.id || i.patientName === p.name);
                   return (
-                    <tr key={p.id} className="mc-row-hover" style={{ cursor: "pointer" }} onClick={() => onOpenPatient(p.id)}>
-                      <td style={{ padding: "10px" }}>
+                    <tr key={p.id} className="mc-row-hover click" onClick={() => onOpenPatient(p.id)}>
+                      <td style={{ height: 56 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                          <Avatar name={p.name} size={34} color={accent}/>
-                          <div><div style={{ fontSize: 13, fontWeight: 650, color: css.text }}>{p.name}</div><div style={{ fontSize: 11.5, color: css.textGray }}>{p.code}</div></div>
+                          <Avatar name={p.name} size={32}/>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 500 }}>{p.name}</div>
+                            <span className="sub"><span className="mono">{p.code}</span>, {p.age === "" ? "age unknown" : `${p.age} y`}{p.gender ? `, ${p.gender}` : ""}</span>
+                          </div>
                         </div>
                       </td>
-                      <td style={{ padding: "10px", fontSize: 12.5, color: css.text }}>{p.age === "" ? "—" : p.age} / {p.gender || "—"}</td>
-                      <td style={{ padding: "10px", fontSize: 12.5, color: css.textGray }}>{p.contact || "—"}</td>
-                      <td style={{ padding: "10px", fontSize: 13, fontWeight: 600, color: css.text }}>{p.visits}</td>
-                      <td style={{ padding: "10px", whiteSpace: "nowrap" }}>
-                        <div style={{ fontSize: 12.5, color: css.text }}>{p.lastVisit ? fmtDate(p.lastVisit, { day: "numeric", month: "short", year: "numeric" }) : "—"}</div>
-                        <div style={{ fontSize: 11.5, color: css.textGray, maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis" }}>{p.condition}</div>
-                      </td>
-                      <td style={{ padding: "10px", fontSize: 12.5, color: css.text }}>{p.doctor}</td>
-                      <td style={{ padding: "10px" }}>{p.status === "No visits" ? <Badge bg="#e5e7eb" fg="#374151">No visits</Badge> : <Badge status={p.status}/>}</td>
-                      <td style={{ padding: "10px" }} onClick={e => e.stopPropagation()}>
+                      <td>{p.contact || <span style={{ color: "var(--muted)" }}>—</span>}</td>
+                      <td className="num">{p.visits}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{p.lastVisit ? fmtDate(p.lastVisit, { day: "numeric", month: "short", year: "numeric" }) : <span style={{ color: "var(--muted)" }}>—</span>}<span className="sub clip">{p.doctor !== "—" ? `${p.doctor}, ${p.condition}` : "No visits yet"}</span></td>
+                      <td>{p.status === "No visits" ? <Badge status="No visits"/> : <Badge status={p.status}/>}</td>
+                      <td onClick={e => e.stopPropagation()}>
                         {inv
-                          ? <Button size="sm" variant="outline" css={css} onClick={() => onViewInvoice(inv)}>{inv.id} · {inv.status}</Button>
-                          : <Button size="sm" variant="soft" accent={accent} icon="plus" onClick={() => onCreateInvoice(p)}>Invoice</Button>}
+                          ? <Button size="sm" variant="outline" onClick={() => onViewInvoice(inv)}>{inv.id}, {inv.status}</Button>
+                          : <Button size="sm" variant="ghost" icon="plus" onClick={() => onCreateInvoice(p)}>Invoice</Button>}
                       </td>
-                      <td style={{ padding: "10px", textAlign: "right" }} onClick={e => e.stopPropagation()}>
-                        <Button size="sm" variant="ghost" css={css} icon="download" title="Download slip" onClick={() => onDownload(p)}/>
+                      <td style={{ textAlign: "right" }} onClick={e => e.stopPropagation()}>
+                        <Button size="sm" variant="ghost" icon="download" aria-label={`Download slip for ${p.name}`} title="Download slip" onClick={() => onDownload(p)}/>
                       </td>
                     </tr>
                   );
@@ -75,12 +69,12 @@ export default function AdminPatients({ css, accent, patients, invoices, onOpenP
             </table>
           </div>
           {rows.length > limit && (
-            <div style={{ textAlign: "center", marginTop: 14 }}>
-              <Button variant="outline" css={css} onClick={() => setLimit(l => l + PAGE)}>Show more ({rows.length - limit} left)</Button>
+            <div style={{ textAlign: "center", marginTop: 16 }}>
+              <Button variant="outline" onClick={() => setLimit(l => l + PAGE)}>Show more ({rows.length - limit} left)</Button>
             </div>
           )}
         </>
       )}
-    </Card>
+    </div>
   );
 }

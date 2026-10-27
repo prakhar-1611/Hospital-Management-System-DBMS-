@@ -4,11 +4,11 @@
    ============================================================ */
 import { useState } from "react";
 import * as api from "../api";
-import { Modal, Button } from "../ui/kit";
+import { Modal, Button, Notice } from "../ui/kit";
 import SlotPicker from "./SlotPicker";
 import { fmtDate, fmtTime } from "../ui/dates";
 
-export default function RescheduleModal({ css, accent, appt, doctor, onClose, onDone, showToast }) {
+export default function RescheduleModal({ appt, doctor, onClose, onDone, showToast }) {
   const [slot, setSlot] = useState({ date: "", time: "" });
   const [busy, setBusy] = useState(false);
   const same = slot.date === appt.date && slot.time === appt.time;
@@ -26,15 +26,17 @@ export default function RescheduleModal({ css, accent, appt, doctor, onClose, on
   }
 
   return (
-    <Modal css={css} width={640} onClose={onClose} title="Reschedule appointment"
-      subtitle={`${appt.doctorName} · currently ${fmtDate(appt.date)} at ${fmtTime(appt.time)}`}
+    <Modal width={640} onClose={onClose} title="Reschedule appointment"
+      subtitle={`${appt.doctorName}, now ${fmtDate(appt.date)} at ${fmtTime(appt.time)}`}
       footer={<>
-        <Button variant="outline" css={css} onClick={onClose}>Keep current time</Button>
-        <Button accent={accent} icon="check" disabled={!slot.date || !slot.time || same || busy} onClick={save}>{busy ? "Saving…" : "Confirm new time"}</Button>
+        <Button variant="ghost" onClick={onClose}>Keep current time</Button>
+        <Button icon="check" disabled={!slot.date || !slot.time || same || busy} onClick={save}>
+          {busy ? "Saving" : slot.time && !same ? `Move to ${fmtDate(slot.date, { day: "numeric", month: "short" })}, ${fmtTime(slot.time)}` : "Confirm new time"}
+        </Button>
       </>}>
       {doctor
-        ? <SlotPicker css={css} accent={accent} doctor={doctor} date={slot.date} time={slot.time} onChange={setSlot} exclude={{ date: appt.date, time: appt.time }}/>
-        : <div style={{ color: css.textGray, fontSize: 13 }}>This doctor is no longer listed. Please cancel and book with another doctor.</div>}
+        ? <SlotPicker doctor={doctor} date={slot.date} time={slot.time} onChange={setSlot} exclude={{ date: appt.date, time: appt.time }}/>
+        : <Notice tone="warning">This doctor is no longer listed. Cancel this visit and book with another doctor.</Notice>}
     </Modal>
   );
 }

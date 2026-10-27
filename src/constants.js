@@ -97,11 +97,13 @@ export function nextInvoiceId() {
 /* ============================================================
    THEME TOKENS
    ============================================================ */
-export const light = { bg:"#f3f4f8", card:"#ffffff", text:"#1e2535", textGray:"#6b7280", border:"#e5e7eb", inputBg:"#f9fafb" };
-export const dark  = { bg:"#0f172a", card:"#1e293b", text:"#f1f5f9", textGray:"#94a3b8", border:"#334155", inputBg:"#334155" };
-export const btnStyle      = { padding:"9px 20px",border:"none",borderRadius:8,cursor:"pointer",background:"#4361ee",color:"white",fontSize:13,fontWeight:600 };
-export const btnGreenStyle = { padding:"9px 20px",border:"none",borderRadius:8,cursor:"pointer",background:"#22c55e",color:"white",fontSize:13,fontWeight:600 };
-export const btnRedStyle   = { padding:"9px 20px",border:"none",borderRadius:8,cursor:"pointer",background:"#ef4444",color:"white",fontSize:13,fontWeight:600 };
+export const light = { bg:"#f3f5fa", card:"#ffffff", text:"#131416", textGray:"#5d5f60", border:"#e4e7eb", inputBg:"#ffffff", subtle:"#f6f7f9", active:"#ebedf0", rule:"#eff1f4", control:"#c9ccd2", ring:"rgba(19,20,22,.06)" };
+export const dark  = { bg:"#0d1117", card:"#151b23", text:"#e8eaed", textGray:"#9aa3ad", border:"#262d37", inputBg:"#151b23", subtle:"#1b222c", active:"#232b36", rule:"#1f2630", control:"#3a4350", ring:"rgba(0,0,0,.4)" };
+// legacy button styles used by the billing and analytics screens; they follow the portal accent
+const btnBase = { padding:"7px 14px",minHeight:32,border:"none",borderRadius:6,cursor:"pointer",color:"white",fontSize:13,fontWeight:500,fontFamily:"inherit" };
+export const btnStyle      = { ...btnBase, background:"var(--accent)" };
+export const btnGreenStyle = { ...btnBase, background:"var(--positive)" };
+export const btnRedStyle   = { ...btnBase, background:"var(--negative)" };
 export function btnOutlineStyle(css) {
-  return { padding:"9px 20px",border:`1px solid ${css.border}`,borderRadius:8,cursor:"pointer",background:"transparent",color:css.text,fontSize:13 };
+  return { ...btnBase, background:"transparent", border:`1px solid ${css.control}`, color:css.text };
 }

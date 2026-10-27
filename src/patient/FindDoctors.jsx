@@ -8,7 +8,7 @@ import { inputStyle } from "../ui/theme";
 import Icon from "../ui/Icon";
 import { DoctorCard } from "./BookAppointment";
 
-export default function FindDoctors({ css, accent, doctors, departments, onBook }) {
+export default function FindDoctors({ css, doctors, departments, onBook }) {
   const [dept, setDept] = useState("all");
   const [q, setQ] = useState("");
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -19,29 +19,27 @@ export default function FindDoctors({ css, accent, doctors, departments, onBook 
     (!term || d.name.toLowerCase().includes(term) || (d.specialization || "").toLowerCase().includes(term) || (d.departmentId?.name || "").toLowerCase().includes(term)));
 
   return (
-    <div className="mc-stack">
-      <Card css={css} pad={16}>
-        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-          <div style={{ position: "relative", flex: "1 1 260px" }}>
-            <span style={{ position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)", color: css.textGray }}><Icon name="search" size={16}/></span>
-            <input value={q} onChange={e => setQ(e.target.value)} placeholder="Search by doctor, specialty or department" style={{ ...inputStyle(css), paddingLeft: 34 }}/>
-          </div>
-          <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...inputStyle(css), flex: "0 1 220px" }} aria-label="Department">
-            <option value="all">All departments</option>
-            {departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
-          </select>
-          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: css.text, cursor: "pointer" }}>
-            <input type="checkbox" checked={availableOnly} onChange={e => setAvailableOnly(e.target.checked)} style={{ accentColor: accent, width: 16, height: 16 }}/>
-            Hide doctors on leave
-          </label>
+    <div>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", marginBottom: 16 }}>
+        <div style={{ position: "relative", flex: "1 1 260px", maxWidth: 380 }}>
+          <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", display: "flex" }}><Icon name="search" size={16}/></span>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Doctor, specialty or department" aria-label="Search doctors" style={{ ...inputStyle(css), paddingLeft: 32 }}/>
         </div>
-      </Card>
-      <div style={{ fontSize: 13, color: css.textGray }}>{rows.length} doctor{rows.length === 1 ? "" : "s"}</div>
-      {rows.length === 0 ? <Card css={css}><EmptyState css={css} icon="stethoscope" title="No doctors match" body="Try another department or search term."/></Card> : (
+        <select value={dept} onChange={e => setDept(e.target.value)} style={{ ...inputStyle(css), width: 200 }} aria-label="Department">
+          <option value="all">All departments</option>
+          {departments.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+        </select>
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 14, cursor: "pointer", minHeight: 34 }}>
+          <input type="checkbox" checked={availableOnly} onChange={e => setAvailableOnly(e.target.checked)} style={{ accentColor: "var(--accent)", width: 16, height: 16 }}/>
+          Hide doctors on leave
+        </label>
+        <span style={{ fontSize: 13, color: "var(--muted)", marginLeft: "auto" }}>{rows.length} of {doctors.length}</span>
+      </div>
+      {rows.length === 0 ? <Card><EmptyState icon="stethoscope" title="No doctors match" body="Try another department or search term."/></Card> : (
         <div className="mc-grid-cards">
           {rows.map(d => (
-            <DoctorCard key={d._id} css={css} accent={accent} doc={d}
-              action={<Button accent={accent} icon="calendarPlus" disabled={d.status === "On Leave"} onClick={() => onBook(d._id)} style={{ width: "100%" }}>
+            <DoctorCard key={d._id} doc={d}
+              action={<Button variant="outline" icon={d.status === "On Leave" ? undefined : "calendarPlus"} disabled={d.status === "On Leave"} onClick={() => onBook(d._id)} style={{ width: "100%" }}>
                 {d.status === "On Leave" ? "On leave" : "Book appointment"}
               </Button>}/>
           ))}

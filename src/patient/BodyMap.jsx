@@ -3,38 +3,39 @@
    (front or back of the body) or picks a category such as skin, mind,
    child's health; then picks a symptom. The symptom decides the
    department and becomes the visit reason. Data: symptoms.js
+   Every region on the figure is also a chip beside it, so the map works
+   by keyboard, screen reader and on small touch screens.
    ============================================================ */
 import { useState } from "react";
 import Icon from "../ui/Icon";
+import { Segmented } from "../ui/kit";
 import { BODY_AREAS, CATEGORIES } from "./symptoms";
 import { money } from "../ui/records";
 
-// clickable shapes on a 220 x 440 figure
+// regions tile a 220 x 440 figure; mirrored limbs share a key
+const ARM_L = "M60 104C50 106 45 116 44 130L37 204C35 220 31 236 31 248C31 258 40 262 45 255C48 248 48 240 49 232L55 206L61 160C62 140 62 120 60 104Z";
+const ARM_R = "M160 104C170 106 175 116 176 130L183 204C185 220 189 236 189 248C189 258 180 262 175 255C172 248 172 240 171 232L165 206L159 160C158 140 158 120 160 104Z";
+const LEG_L = "M64 236L108 236L106 300C104 330 100 360 99 400L100 414C101 422 96 426 88 426L72 426C66 426 64 421 68 416L76 404C74 370 70 340 68 310C66 285 64 260 64 236Z";
+const LEG_R = "M156 236L112 236L114 300C116 330 120 360 121 400L120 414C119 422 124 426 132 426L148 426C154 426 156 421 152 416L144 404C146 370 150 340 152 310C154 285 156 260 156 236Z";
+const UPPER = "M98 90C86 92 70 95 63 105C60 120 66 140 70 170L150 170C154 140 160 120 157 105C150 95 134 92 122 90Z";
+const LOWER = "M70 170L150 170C151 190 154 215 156 236L64 236C66 215 69 190 70 170Z";
+const NECK = "M99 68L121 68L123 92L97 92Z";
+const HEAD = "M110 13C125 13 136 26 136 44C136 62 125 75 110 75C95 75 84 62 84 44C84 26 95 13 110 13Z";
+const EARS = "M84 38C79 38 78 50 84 54ZM136 38C141 38 142 50 136 54Z";
+
 const FRONT = [
-  ["arms",    "rect",    { x: 36, y: 104, width: 24, height: 128, rx: 12, transform: "rotate(9 48 104)" }],
-  ["arms",    "rect",    { x: 160, y: 104, width: 24, height: 128, rx: 12, transform: "rotate(-9 172 104)" }],
-  ["legs",    "rect",    { x: 77, y: 228, width: 30, height: 186, rx: 14 }],
-  ["legs",    "rect",    { x: 113, y: 228, width: 30, height: 186, rx: 14 }],
-  ["head",    "circle",  { cx: 110, cy: 48, r: 32 }],
-  ["eyes",    "ellipse", { cx: 110, cy: 42, rx: 21, ry: 8 }],
-  ["ent",     "rect",    { x: 100, y: 53, width: 20, height: 22, rx: 8 }],
-  ["neck",    "rect",    { x: 97, y: 80, width: 26, height: 18, rx: 6 }],
-  ["chest",   "rect",    { x: 66, y: 98, width: 88, height: 68, rx: 16 }],
-  ["abdomen", "rect",    { x: 72, y: 166, width: 76, height: 62, rx: 14 }],
+  ["arms", ARM_L], ["arms", ARM_R], ["legs", LEG_L], ["legs", LEG_R],
+  ["chest", UPPER], ["abdomen", LOWER], ["neck", NECK], ["head", HEAD],
+  ["ent", `${EARS}M110 45C112 50 115 54 116 57C116 60 113 61 110 61C107 61 104 60 104 57C105 54 108 50 110 45Z`],
+  ["eyes", "M93 40C93 36.5 96 35 100 35C104 35 107 36.5 107 40C107 43.5 104 45 100 45C96 45 93 43.5 93 40ZM113 40C113 36.5 116 35 120 35C124 35 127 36.5 127 40C127 43.5 124 45 120 45C116 45 113 43.5 113 40Z"],
 ];
 const BACK = [
-  ["arms",      "rect",   { x: 36, y: 104, width: 24, height: 128, rx: 12, transform: "rotate(9 48 104)" }],
-  ["arms",      "rect",   { x: 160, y: 104, width: 24, height: 128, rx: 12, transform: "rotate(-9 172 104)" }],
-  ["legs",      "rect",   { x: 77, y: 228, width: 30, height: 186, rx: 14 }],
-  ["legs",      "rect",   { x: 113, y: 228, width: 30, height: 186, rx: 14 }],
-  ["head",      "circle", { cx: 110, cy: 48, r: 32 }],
-  ["neck",      "rect",   { x: 97, y: 80, width: 26, height: 18, rx: 6 }],
-  ["upperBack", "rect",   { x: 66, y: 98, width: 88, height: 68, rx: 16 }],
-  ["lowerBack", "rect",   { x: 72, y: 166, width: 76, height: 62, rx: 14 }],
+  ["arms", ARM_L], ["arms", ARM_R], ["legs", LEG_L], ["legs", LEG_R],
+  ["upperBack", UPPER], ["lowerBack", LOWER], ["neck", NECK], ["head", `${HEAD}${EARS}`],
 ];
-const SHAPE = { rect: "rect", circle: "circle", ellipse: "ellipse" };
+const VIEW_KEYS = { front: [...new Set(FRONT.map(s => s[0]))], back: [...new Set(BACK.map(s => s[0]))] };
 
-export default function BodyMap({ css, accent, isDark, departments, onPick }) {
+export default function BodyMap({ departments, onPick }) {
   const [view, setView] = useState("front");
   const [area, setArea] = useState(null);           // key in BODY_AREAS or CATEGORIES
   const [hover, setHover] = useState(null);
@@ -42,87 +43,73 @@ export default function BodyMap({ css, accent, isDark, departments, onPick }) {
   const deptByName = Object.fromEntries(departments.map(d => [d.name, d]));
   const shapes = view === "front" ? FRONT : BACK;
 
-  const fillFor = (key) => key === area ? accent : key === hover ? `${accent}80` : isDark ? "#334155" : "#e2e8f0";
-  const strokeFor = (key) => key === area ? accent : isDark ? "#475569" : "#cbd5e1";
+  function turn(v) {
+    setView(v);
+    if (BODY_AREAS[area] && !VIEW_KEYS[v].includes(area)) setArea(null);
+  }
 
   return (
-    <div className="mc-bodymap" style={{ display: "grid", gridTemplateColumns: "minmax(200px, 260px) minmax(0, 1fr)", gap: 22 }}>
-      {/* figure */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ display: "flex", padding: 3, borderRadius: 10, background: css.subtle, border: `1px solid ${css.border}` }}>
-          {[["front", "Front"], ["back", "Back"]].map(([id, label]) => (
-            <button key={id} onClick={() => { setView(id); if (BODY_AREAS[area] && !(id === "front" ? FRONT : BACK).some(s => s[0] === area)) setArea(null); }}
-              style={{ padding: "6px 16px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12.5, fontWeight: 650,
-                background: view === id ? css.card : "transparent", color: view === id ? accent : css.textGray, boxShadow: view === id ? `0 1px 3px ${css.ring}` : "none" }}>
-              {label}
-            </button>
+    <div className="mc-bodymap" style={{ display: "grid", gridTemplateColumns: "minmax(180px, 240px) minmax(0, 1fr)", gap: 28 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+        <Segmented label="Side of the body" value={view} onChange={turn} options={[{ value: "front", label: "Front" }, { value: "back", label: "Back" }]}/>
+        <svg viewBox="0 0 220 440" style={{ width: "100%", maxWidth: "min(220px, 44vw)", maxHeight: "52vh" }} aria-label={`Body diagram, ${view}`}>
+          {shapes.map(([key, d], i) => (
+            <path key={`${key}-${i}`} d={d} tabIndex={0} role="button" aria-label={BODY_AREAS[key].label} aria-pressed={key === area}
+              className={`mc-body-part${key === area ? " mc-body-part--on" : key === hover ? " mc-body-part--hot" : ""}`}
+              onClick={() => setArea(key)} onMouseEnter={() => setHover(key)} onMouseLeave={() => setHover(null)}
+              onFocus={() => setHover(key)} onBlur={() => setHover(null)}
+              onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setArea(key); } }}>
+              <title>{BODY_AREAS[key].label}</title>
+            </path>
           ))}
-        </div>
-        <svg viewBox="0 0 220 430" style={{ width: "100%", maxWidth: 230 }} role="img" aria-label={`Body diagram, ${view} view`}>
-          {shapes.map(([key, type, attrs], i) => {
-            const Tag = SHAPE[type];
-            return (
-              <Tag key={`${key}-${i}`} {...attrs} fill={fillFor(key)} stroke={strokeFor(key)} strokeWidth="2"
-                style={{ cursor: "pointer", transition: "fill .15s" }}
-                onClick={() => setArea(key)} onMouseEnter={() => setHover(key)} onMouseLeave={() => setHover(null)}>
-                <title>{BODY_AREAS[key].label}</title>
-              </Tag>
-            );
-          })}
-          {view === "front" && (
-            <g pointerEvents="none" fill={area === "eyes" ? "white" : isDark ? "#94a3b8" : "#64748b"}>
-              <circle cx="101" cy="42" r="2.5"/><circle cx="119" cy="42" r="2.5"/>
-            </g>
-          )}
+          {view === "back" && <path d="M110 96V228" stroke="var(--sheet)" strokeWidth="2" strokeDasharray="3 5" pointerEvents="none"/>}
         </svg>
-        <div style={{ fontSize: 12, color: css.textGray, textAlign: "center", minHeight: 18 }}>
+        <div style={{ fontSize: 13, color: "var(--muted)", textAlign: "center", minHeight: 20 }} aria-live="polite">
           {hover ? BODY_AREAS[hover].label : view === "front" ? "Tap where it hurts. Turn around for back pain." : "Tap the part of your back that hurts."}
         </div>
       </div>
 
-      {/* categories + symptoms */}
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 12, fontWeight: 650, color: css.textGray, marginBottom: 8 }}>Not about one body part?</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(165px, 1fr))", gap: 8, marginBottom: 18 }}>
-          {Object.entries(CATEGORIES).map(([key, c]) => {
-            const on = key === area;
-            return (
-              <button key={key} onClick={() => setArea(key)}
-                style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 11px", borderRadius: 10, cursor: "pointer", textAlign: "left", fontSize: 12.5, fontWeight: 600,
-                  border: `1px solid ${on ? accent : css.border}`, background: on ? `${accent}14` : css.card, color: on ? accent : css.text }}>
-                <Icon name={c.icon} size={16}/>{c.label}
-              </button>
-            );
-          })}
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Where is the problem?</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
+          {VIEW_KEYS[view].map(key => (
+            <button key={key} type="button" aria-pressed={key === area} onClick={() => setArea(key)} className={key === area ? "mc-chip mc-chip--on" : "mc-chip"}>
+              {key === area && <Icon name="check" size={14} stroke={2.5}/>}{BODY_AREAS[key].label}
+            </button>
+          ))}
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Not about one body part?</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 22 }}>
+          {Object.entries(CATEGORIES).map(([key, c]) => (
+            <button key={key} type="button" aria-pressed={key === area} onClick={() => setArea(key)} className={key === area ? "mc-chip mc-chip--on" : "mc-chip"}>
+              <Icon name={key === area ? "check" : c.icon} size={15}/>{c.label}
+            </button>
+          ))}
         </div>
 
         {!group ? (
-          <div style={{ padding: 20, borderRadius: 14, border: `1px dashed ${css.border}`, color: css.textGray, fontSize: 13, textAlign: "center" }}>
-            <Icon name="info" size={20} style={{ margin: "0 auto 8px" }}/>
-            Choose a body part on the figure or one of the categories above, then pick what fits best.
-            We'll suggest the right department.
-          </div>
+          <p style={{ padding: "16px 0", borderTop: "1px solid var(--rule)", color: "var(--muted)", fontSize: 14 }}>
+            Choose a body part or a category, then the problem that fits best. We will suggest the right department.
+          </p>
         ) : (
-          <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: css.text, marginBottom: 10 }}>{group.label}: what's the problem?</div>
-            <div style={{ display: "grid", gap: 8 }}>
+          <section aria-label={`${group.label} symptoms`}>
+            <h4 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{group.label}: what is the problem?</h4>
+            <div style={{ borderTop: "1px solid var(--rule)" }}>
               {group.symptoms.map(([text, deptName]) => {
                 const dept = deptByName[deptName] || deptByName.General;
                 return (
-                  <button key={text} disabled={!dept} onClick={() => onPick(dept, text)} className="mc-row-hover"
-                    style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 14px", borderRadius: 12, cursor: dept ? "pointer" : "not-allowed",
-                      border: `1px solid ${css.border}`, background: css.card, color: css.text, textAlign: "left" }}>
-                    <span style={{ flex: 1, fontSize: 13.5, fontWeight: 600 }}>{text}</span>
-                    {dept && <span style={{ fontSize: 11.5, color: accent, fontWeight: 650, whiteSpace: "nowrap" }}>{dept.name} · {money(dept.consultationFee)}</span>}
-                    <Icon name="chevronRight" size={16} color={css.textGray}/>
+                  <button key={text} type="button" disabled={!dept} onClick={() => onPick(dept, text)} className="mc-list-btn">
+                    <span style={{ flex: 1, fontWeight: 500 }}>{text}</span>
+                    {dept && <span style={{ fontSize: 13, color: "var(--muted)", whiteSpace: "nowrap" }}>{dept.name}, {money(dept.consultationFee)}</span>}
+                    <Icon name="chevronRight" size={16} color="var(--muted)"/>
                   </button>
                 );
               })}
             </div>
-            <p style={{ fontSize: 11.5, color: css.textGray, marginTop: 12 }}>
-              This is a guide to find the right department, not a diagnosis. For severe chest pain, breathing trouble or heavy bleeding, call 108 now.
+            <p style={{ fontSize: 13, color: "var(--muted)", marginTop: 12, maxWidth: "70ch" }}>
+              This helps you find a department; it is not a diagnosis. For severe chest pain, trouble breathing or heavy bleeding, call 108 now.
             </p>
-          </div>
+          </section>
         )}
       </div>
     </div>

@@ -9,7 +9,7 @@ import { INITIAL_INVOICES, getTodayPlus, nextInvoiceId } from "../constants";
 import * as api from "../api";
 import { mapAll } from "../mappers";
 import { PORTALS, useTheme, useToasts } from "../ui/theme";
-import { Card, Button, Spinner } from "../ui/kit";
+import { Card, Button, Spinner, Skeleton, SkeletonRows } from "../ui/kit";
 import PortalShell from "../ui/PortalShell";
 import Icon from "../ui/Icon";
 import { toAppt } from "../ui/records";
@@ -17,7 +17,7 @@ import { todayStr, fmtDate, isPastSlot } from "../ui/dates";
 
 import NotifPanel         from "../components/NotifPanel";
 import AnalyticsSection   from "../components/AnalyticsSection";
-import { ScheduleModal }  from "../components/DoctorsSection";
+import ScheduleModal from "../components/ScheduleModal";
 import BillingSection     from "../components/BillingSection";
 import CreateInvoiceModal from "../components/CreateInvoiceModal";
 import ViewInvoiceModal   from "../components/ViewInvoiceModal";
@@ -158,10 +158,14 @@ export default function AdminApp({ user, onLogout }) {
   const unpaid = invoices.filter(i => i.status === "Unpaid").length;
   const unread = notifications.filter(n => !n.read).length;
   const totalRevenue = invoices.filter(i => i.status === "Paid").reduce((s, i) => s + i.grandTotal, 0);
+  const todayCount = appts.filter(a => a.date === today && a.status !== "Cancelled").length;
+  const upcomingCount = appts.filter(a => a.status === "Scheduled" && !isPastSlot(a.date, a.time)).length;
+  const availableDocs = doctors.filter(d => d.status === "Available").length;
+  const onLeaveDocs = doctors.filter(d => d.status === "On Leave").length;
 
   const nav = [
     { id: "dashboard",    label: "Dashboard",            icon: "dashboard" },
-    { id: "appointments", label: "All appointments",     icon: "calendar", badge: needsUpdate || null },
+    { id: "appointments", label: "Appointments",         icon: "calendar", badge: needsUpdate || null },
     { id: "walkin",       label: "Walk-in registration", icon: "calendarPlus" },
     { id: "doctors",      label: "Doctors",              icon: "stethoscope" },
     { id: "patients",     label: "Patients",             icon: "users" },
@@ -169,60 +173,83 @@ export default function AdminApp({ user, onLogout }) {
     { id: "billing",      label: "Billing",              icon: "card", badge: unpaid || null },
     { id: "settings",     label: "Settings",             icon: "settings" },
   ];
-  const titles = { dashboard: "Dashboard", appointments: "All appointments", walkin: "Walk-in registration", doctors: "Doctors",
-    patients: "Patients", analytics: "Analytics", billing: "Billing & payments", settings: "Settings" };
-  const badge = {
-    online:  { dot: "#22c55e", bg: "#dcfce7", fg: "#166534", text: "Database connected" },
-    offline: { dot: "#ef4444", bg: "#fee2e2", fg: "#991b1b", text: "Database offline" },
-    loading: { dot: "#f59e0b", bg: "#fef9c3", fg: "#854d0e", text: "Loading" },
-  }[dbStatus];
+  const statusKind = { online: "positive", offline: "negative", loading: "warning" }[dbStatus];
+  const statusText = { online: "Database connected", offline: "Database offline", loading: "Connecting" }[dbStatus];
   const shared = { css, accent: portal.accent, tint: portal.tint, isDark };
   const go = (s, tab) => { if (tab) setApptTab(tab); setSection(s); };
+  const ready = doctors.length > 0;
+  const walkInBtn = <Button icon="calendarPlus" onClick={() => setSection("walkin")}>Walk-in registration</Button>;
+
+  // each screen's title, the one finding to read first, and its main action
+  const meta = {
+    dashboard: { title: "Dashboard", actions: walkInBtn,
+      finding: ready && <><strong>{fmtDate(today, { weekday: "long", day: "numeric", month: "long" })}.</strong> {todayCount} appointment{todayCount === 1 ? "" : "s"} today, {availableDocs} of {doctors.length} doctors available{needsUpdate > 0 && <>, <strong>{needsUpdate} past visit{needsUpdate === 1 ? "" : "s"} still waiting for a doctor update</strong></>}.</> },
+    appointments: { title: "Appointments", actions: walkInBtn,
+      finding: ready && <>{upcomingCount} upcoming{needsUpdate > 0 ? <>, <strong>{needsUpdate} need a status update</strong></> : ", none waiting for an update"}. Online bookings and walk-ins appear here.</> },
+    walkin: { title: "Walk-in registration", finding: "For patients without a phone or email. Everyone else books for themselves in MyMedCare." },
+    doctors: { title: "Doctors", finding: ready && <>{doctors.length} doctors: {availableDocs} available, {doctors.filter(d => d.status === "Busy").length} busy, {onLeaveDocs} on leave.</> },
+    patients: { title: "Patients", finding: ready && <>{patients.length} registered patients. Click one to see their full record.</> },
+    analytics: { title: "Analytics", finding: ready && <>Seven reports computed by MongoDB from all {appts.length} appointments.</> },
+    billing: { title: "Billing", finding: "Invoices are kept in this browser only and clear when the page is refreshed." },
+    settings: { title: "Settings", finding: "Appearance, system status and your password." },
+  }[section];
 
   const headerRight = (
     <>
-      <span className="mc-db-badge mc-hide-sm" title={loadError || badge.text} style={{ background: badge.bg, color: badge.fg }}>
-        <span style={{ width: 8, height: 8, borderRadius: "50%", background: badge.dot }}/>{badge.text}
+      <span className="mc-db-badge mc-hide-sm" title={loadError || statusText} style={{ background: `var(--pill-${statusKind}-bg)`, color: `var(--pill-${statusKind}-fg)`, marginRight: 4 }}>
+        {statusText}
       </span>
-      <button onClick={reload} title="Reload data" aria-label="Reload data"
-        style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${css.border}`, background: "transparent", color: css.textGray, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {dbStatus === "loading" ? <Spinner size={15} color={portal.accent}/> : <Icon name="refresh" size={17}/>}
+      <button onClick={reload} title="Reload data" aria-label="Reload data" className="mc-iconbtn">
+        {dbStatus === "loading" ? <Spinner size={15}/> : <Icon name="refresh" size={17}/>}
       </button>
       <div style={{ position: "relative" }} ref={notifRef}>
-        <button onClick={() => setNotifOpen(o => !o)} aria-label="Notifications"
-          style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${css.border}`, background: "transparent", color: css.textGray, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+        <button onClick={() => setNotifOpen(o => !o)} aria-label={`Notifications${unread ? `, ${unread} unread` : ""}`} aria-expanded={notifOpen} className="mc-iconbtn" style={{ position: "relative" }}>
           <Icon name="bell" size={17}/>
-          {unread > 0 && <span style={{ position: "absolute", top: -5, right: -5, background: "#ef4444", color: "white", fontSize: 9.5, fontWeight: 700, minWidth: 17, height: 17, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px" }}>{unread > 9 ? "9+" : unread}</span>}
+          {unread > 0 && <span style={{ position: "absolute", top: 3, right: 2, background: "var(--accent)", color: "#fff", fontSize: 10.5, fontWeight: 600, minWidth: 16, height: 16, borderRadius: 8, display: "grid", placeItems: "center", padding: "0 4px" }}>{unread > 9 ? "9+" : unread}</span>}
         </button>
         {notifOpen && (
-          <NotifPanel notifications={notifications} css={css}
-            onMarkAll={() => setNotifications(n => n.map(x => ({ ...x, read: true })))}
-            onDismiss={(id) => setNotifications(n => n.filter(x => x.id !== id))}
-            onClearAll={() => setNotifications([])}
-            onNav={(s) => { if (s) setSection(s); setNotifOpen(false); }}/>
+          <>
+            <div onClick={() => setNotifOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 999 }}/>
+            <NotifPanel notifications={notifications}
+              onMarkAll={() => setNotifications(n => n.map(x => ({ ...x, read: true })))}
+              onDismiss={(id) => setNotifications(n => n.filter(x => x.id !== id))}
+              onClearAll={() => setNotifications([])}
+              onNav={(s) => { if (s) setSection(s); setNotifOpen(false); }}/>
+          </>
         )}
       </div>
     </>
   );
 
   let body;
-  if (dbStatus === "offline" && doctors.length === 0) {
+  if (dbStatus === "offline" && !ready) {
     body = (
-      <Card css={css} style={{ borderColor: "#fecaca" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#991b1b", marginBottom: 12 }}><Icon name="alert"/> Could not load data from the API: {loadError}</div>
-        <Button accent={portal.accent} icon="refresh" onClick={reload}>Try again</Button>
+      <Card style={{ maxWidth: 520 }}>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-start", marginBottom: 14 }}>
+          <Icon name="alert" size={18} color="var(--negative)" style={{ marginTop: 2 }}/>
+          <div>
+            <div style={{ fontWeight: 600 }}>Could not load hospital data</div>
+            <div style={{ color: "var(--muted)", fontSize: 13.5, marginTop: 2 }}>{loadError}. Check that the backend is running on port 5000, then try again.</div>
+          </div>
+        </div>
+        <Button icon="refresh" onClick={reload}>Try again</Button>
       </Card>
     );
-  } else if (dbStatus === "loading" && doctors.length === 0) {
-    body = <Card css={css} style={{ display: "flex", alignItems: "center", gap: 12, color: css.textGray }}><Spinner color={portal.accent}/> Loading hospital data from MongoDB…</Card>;
+  } else if (!ready) {
+    body = (
+      <div className="mc-stack" aria-busy="true" aria-label="Loading hospital data">
+        <div className="mc-grid-stats">{[0, 1, 2, 3].map(i => <Skeleton key={i} h={84} r={8}/>)}</div>
+        <SkeletonRows rows={6} h={44}/>
+      </div>
+    );
   } else if (section === "dashboard") {
-    body = <AdminDashboard {...shared} user={user} doctors={doctors} patients={patients} appts={appts} departments={departments}
+    body = <AdminDashboard {...shared} doctors={doctors} patients={patients} appts={appts} departments={departments}
       revenue={"$" + totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 0 })} unpaid={unpaid} onNavigate={go} onOpenAppt={setOpenApptId}/>;
   } else if (section === "appointments") {
     body = <AdminAppointments {...shared} appts={appts} departments={departments} tab={apptTab} setTab={setApptTab} onOpenAppt={setOpenApptId} onUpdate={updateAppt}/>;
   } else if (section === "walkin") {
     body = <WalkInRegistration {...shared} departments={departments} doctors={doctors} patients={patients} showToast={showToast}
-      onDone={(name, docName, date) => { loadAll(); addNotification({ type: "success", title: "Walk-in registered", body: `${name} → ${docName} on ${date}`, nav: "appointments" }); }}
+      onDone={(name, docName, date) => { loadAll(); addNotification({ type: "success", title: "Walk-in registered", body: `${name} with ${docName} on ${date}`, nav: "appointments" }); }}
       onNavigate={go}/>;
   } else if (section === "doctors") {
     body = <AdminDoctors {...shared} doctors={doctors} departments={departments} appts={appts} onStatus={setDoctorStatus} onSchedule={setScheduleDoc}/>;
@@ -237,7 +264,7 @@ export default function AdminApp({ user, onLogout }) {
       onPay={(inv) => setPaymentModal({ invoice: inv })} onPrint={printInvoice}/>;
   } else {
     body = <AdminSettings {...shared} setIsDark={setIsDark} user={user} counts={{ departments: departments.length, doctors: doctors.length, patients: patients.length, appointments: appts.length }}
-      dbStatus={badge.text} onExport={exportDB} showToast={showToast}/>;
+      dbStatus={statusText} onExport={exportDB} showToast={showToast}/>;
   }
 
   const openAppt = appts.find(a => a.id === openApptId);
@@ -245,18 +272,12 @@ export default function AdminApp({ user, onLogout }) {
     <>
       {toastLayer}
       <PortalShell portal={portal} nav={nav} section={section} onNavigate={(s) => { setSection(s); setNotifOpen(false); }} user={user} roleLabel="Administrator"
-        title={titles[section]} subtitle={fmtDate(today, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
-        css={css} isDark={isDark} setIsDark={setIsDark} onLogout={onLogout} headerRight={headerRight} profileSection="settings"
-        sidebarExtra={
-          <div style={{ padding: 14, borderRadius: 12, background: isDark ? "#4361ee22" : portal.tint, color: isDark ? "#a5b4fc" : portal.accent, fontSize: 12.5 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}><Icon name="info" size={15}/> Today</div>
-            <div style={{ opacity: .9 }}>{appts.filter(a => a.date === today && a.status !== "Cancelled").length} appointments · {doctors.filter(d => d.status === "Available").length} doctors available</div>
-          </div>
-        }>
-        {dbStatus === "offline" && doctors.length > 0 && (
-          <div className="mc-banner" style={{ background: "#fee2e2", border: "1px solid #fecaca", color: "#991b1b" }}>
+        title={meta.title} subtitle={meta.finding || undefined} titleActions={meta.actions}
+        css={css} isDark={isDark} setIsDark={setIsDark} onLogout={onLogout} headerRight={headerRight} profileSection="settings">
+        {dbStatus === "offline" && ready && (
+          <div className="mc-banner" style={{ background: "var(--pill-negative-bg)", color: "var(--pill-negative-fg)" }}>
             <span>Could not reach the API: {loadError}</span>
-            <Button size="sm" accent={portal.accent} onClick={reload}>Retry</Button>
+            <Button size="sm" variant="outline" onClick={reload}>Retry</Button>
           </div>
         )}
         {body}

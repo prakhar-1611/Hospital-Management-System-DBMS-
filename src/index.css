@@ -1,9 +1,22 @@
-/* Global reset. Layout rules are in App.css, colours in the theme tokens (constants.js). */
+/* Global reset and the platform layer: fonts, text rendering, touch behaviour.
+   Layout and components are in App.css; colours are CSS variables set per portal. */
+@import "@fontsource-variable/ibm-plex-sans/index.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
-html, body { width: 100%; height: 100%; overflow: hidden }
-#root { width: 100%; height: 100% }
-body {
-  font-family: 'Inter', 'Segoe UI', system-ui, Roboto, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+html {
+  width: 100%; height: 100%; overflow: hidden;
+  -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; text-size-adjust: 100%;
+  overscroll-behavior: none;
 }
+body {
+  width: 100%; height: 100%; overflow: hidden;
+  font-family: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility;
+}
+#root { width: 100%; height: 100% }
+button, a, [role="button"], summary, label { touch-action: manipulation }
+button { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none }
+/* figures that identify things (patient IDs, time slots) use the mono face */
+.mono { font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace; font-size: .92em }

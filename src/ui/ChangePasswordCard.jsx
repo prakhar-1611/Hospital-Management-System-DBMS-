@@ -1,17 +1,19 @@
 /* ============================================================
-   ChangePasswordCard.jsx — PUT /api/auth/password for the logged-in
-   account (doctor and patient portals). Google accounts have no password.
+   ChangePasswordCard.jsx — PUT /api/auth/password for the signed-in
+   account (all three portals). Google accounts have no password.
    ============================================================ */
 import { useState } from "react";
 import * as api from "../api";
-import { Card, SectionTitle, Field, Button } from "./kit";
-import { inputStyle } from "./theme";
-import Icon from "./Icon";
+import { Card, SectionTitle, Field, Button, Notice } from "./kit";
 
-export default function ChangePasswordCard({ css, accent, showToast, isGoogle }) {
+const flat = { width: "100%", minHeight: 34, padding: "7px 10px", border: "1px solid var(--control)", borderRadius: 6, background: "var(--sheet)", color: "var(--ink)", fontSize: 14 };
+
+export default function ChangePasswordCard({ showToast, isGoogle }) {
   const [f, setF] = useState({ current: "", next: "", confirm: "" });
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF(s => ({ ...s, [k]: e.target.value }));
+  const tooShort = f.next.length > 0 && f.next.length < 6;
+  const mismatch = f.confirm.length > 0 && f.confirm !== f.next;
 
   async function submit(e) {
     e.preventDefault();
@@ -30,27 +32,24 @@ export default function ChangePasswordCard({ css, accent, showToast, isGoogle })
   }
 
   return (
-    <Card css={css}>
-      <SectionTitle css={css} title="Security" subtitle="Password for signing in with email"/>
+    <Card>
+      <SectionTitle title="Password" subtitle="For signing in with your email"/>
       {isGoogle ? (
-        <div style={{ display: "flex", gap: 10, padding: 14, borderRadius: 12, background: css.subtle, border: `1px solid ${css.border}`, fontSize: 13, color: css.text }}>
-          <Icon name="shield" size={18} color={accent}/>
-          <span>You sign in with Google, so there is no MedCare password to manage. Your Google account's security settings apply.</span>
-        </div>
+        <Notice tone="info">You sign in with Google, so there is no MedCare password to change. Your Google account's security settings apply.</Notice>
       ) : (
-        <form onSubmit={submit} style={{ display: "grid", gap: 12 }}>
-          <Field css={css} label="Current password">
-            <input type="password" autoComplete="current-password" value={f.current} onChange={set("current")} style={inputStyle(css)}/>
+        <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
+          <Field label="Current password">
+            <input type="password" autoComplete="current-password" value={f.current} onChange={set("current")} style={flat}/>
           </Field>
           <div className="mc-form-grid">
-            <Field css={css} label="New password">
-              <input type="password" autoComplete="new-password" value={f.next} onChange={set("next")} style={inputStyle(css)}/>
+            <Field label="New password" hint={tooShort ? "At least 6 characters" : undefined}>
+              <input type="password" autoComplete="new-password" value={f.next} onChange={set("next")} aria-invalid={tooShort} style={flat}/>
             </Field>
-            <Field css={css} label="Confirm new password">
-              <input type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} style={inputStyle(css)}/>
+            <Field label="Confirm new password" hint={mismatch ? "Does not match yet" : undefined}>
+              <input type="password" autoComplete="new-password" value={f.confirm} onChange={set("confirm")} aria-invalid={mismatch} style={flat}/>
             </Field>
           </div>
-          <div><Button type="submit" accent={accent} icon="lock" disabled={busy || !f.current || !f.next}>{busy ? "Updating…" : "Update password"}</Button></div>
+          <div><Button type="submit" disabled={busy || !f.current || !f.next}>{busy ? "Updating" : "Update password"}</Button></div>
         </form>
       )}
     </Card>

@@ -1,107 +1,76 @@
 /* ============================================================
-   BillingSection.jsx
-   Place this file at: src/components/BillingSection.jsx
+   BillingSection.jsx — invoices, payments and totals. This screen is a
+   browser-only demo: invoices are not stored in MongoDB.
    ============================================================ */
 import { useState } from "react";
-import { getTodayPlus, btnStyle, btnGreenStyle, btnOutlineStyle } from "../constants";
+import { getTodayPlus } from "../constants";
+import { StatCard, Tabs, Badge, Button, Card, EmptyState } from "../ui/kit";
+import { inputStyle } from "../ui/theme";
+import Icon from "../ui/Icon";
+
+const money = (n) => "$" + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const KIND = { Paid: "positive", Unpaid: "warning", Voided: "neutral" };
 
 export default function BillingSection({ invoices, css, onCreateInvoice, onViewInvoice, onPay, onPrint }) {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
+  const term = search.trim().toLowerCase();
+  const today = getTodayPlus(0);
 
-  const filtered = invoices.filter(inv => {
-    const matchStatus = filter === "All" || inv.status === filter;
-    const matchSearch = inv.patientName.toLowerCase().includes(search.toLowerCase()) || inv.id.toLowerCase().includes(search.toLowerCase());
-    return matchStatus && matchSearch;
-  });
-
-  const totalPaid   = invoices.filter(i => i.status==="Paid").reduce((s,i) => s+i.grandTotal, 0);
-  const totalUnpaid = invoices.filter(i => i.status==="Unpaid").reduce((s,i) => s+i.grandTotal, 0);
-  const totalVoided = invoices.filter(i => i.status==="Voided").reduce((s,i) => s+i.grandTotal, 0);
-
-  const summaryCards = [
-    { label:"Total Collected",      value:"$"+totalPaid.toLocaleString(undefined,{minimumFractionDigits:2}),   icon:"✅", bg:"#dcfce7", c:"#166534" },
-    { label:"Outstanding",          value:"$"+totalUnpaid.toLocaleString(undefined,{minimumFractionDigits:2}), icon:"⏳", bg:"#fef9c3", c:"#854d0e" },
-    { label:"Voided / Written Off", value:"$"+totalVoided.toLocaleString(undefined,{minimumFractionDigits:2}), icon:"❌", bg:"#fee2e2", c:"#991b1b" },
-    { label:"Total Invoices",       value:invoices.length,                                                      icon:"📄", bg:"#dbeafe", c:"#1e40af" },
-  ];
-
-  const statusStyle = {
-    Paid:   { bg:"#dcfce7", c:"#166534" },
-    Unpaid: { bg:"#fef9c3", c:"#854d0e" },
-    Voided: { bg:"#f3f4f6", c:"#6b7280" },
-  };
+  const filtered = invoices.filter(inv =>
+    (filter === "All" || inv.status === filter) &&
+    (!term || inv.patientName.toLowerCase().includes(term) || inv.id.toLowerCase().includes(term)));
+  const sum = (s) => invoices.filter(i => i.status === s).reduce((a, i) => a + i.grandTotal, 0);
+  const overdue = invoices.filter(i => i.status === "Unpaid" && i.dueDate < today).length;
+  const tabs = ["All", "Paid", "Unpaid", "Voided"].map(f => ({ id: f, label: f, count: f === "All" ? invoices.length : invoices.filter(i => i.status === f).length }));
 
   return (
-    <div style={{animation:"fadeIn .4s ease"}}>
-      {/* Summary cards */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(180px, 100%),1fr))",gap:16,marginBottom:24}}>
-        {summaryCards.map(s => (
-          <div key={s.label} style={{background:css.card,padding:18,borderRadius:12,border:`1px solid ${css.border}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div>
-              <div style={{color:css.textGray,fontSize:11,marginBottom:4}}>{s.label}</div>
-              <div style={{fontWeight:800,fontSize:20,color:css.text}}>{s.value}</div>
-            </div>
-            <div style={{width:42,height:42,borderRadius:10,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{s.icon}</div>
-          </div>
-        ))}
+    <div className="mc-stack">
+      <div className="mc-grid-stats">
+        <StatCard label="Collected" value={money(sum("Paid"))} hint={`${invoices.filter(i => i.status === "Paid").length} paid invoices`}/>
+        <StatCard label="Outstanding" value={money(sum("Unpaid"))} hint={overdue ? `${overdue} overdue` : "None overdue"}/>
+        <StatCard label="Voided" value={money(sum("Voided"))} hint="Written off"/>
+        <StatCard label="Invoices" value={invoices.length} hint="This session"/>
       </div>
 
-      <div style={{background:css.card,padding:24,borderRadius:14,border:`1px solid ${css.border}`}}>
-        {/* Toolbar */}
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
-          <h3 style={{color:css.text}}>Invoices</h3>
-          <div style={{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient / invoice..."
-              style={{padding:"8px 14px",border:`1px solid ${css.border}`,borderRadius:8,background:css.inputBg,color:css.text,fontSize:12,outline:"none",width:"min(200px, 100%)"}}/>
-            {["All","Paid","Unpaid","Voided"].map(f => (
-              <button key={f} onClick={() => setFilter(f)}
-                style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===f?"#4361ee":css.border}`,background:filter===f?"#4361ee":"transparent",color:filter===f?"white":css.textGray,cursor:"pointer",fontSize:12,fontWeight:filter===f?600:400}}>{f}</button>
-            ))}
-            <button onClick={onCreateInvoice} style={{...btnStyle,padding:"8px 16px",fontSize:12}}>+ New Invoice</button>
+      <div>
+        <Tabs tabs={tabs} value={filter} onChange={setFilter}/>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "16px 0" }}>
+          <div style={{ position: "relative", flex: "1 1 240px", maxWidth: 340 }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--muted)", display: "flex" }}><Icon name="search" size={16}/></span>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search patient or invoice number" aria-label="Search invoices" style={{ ...inputStyle(css), paddingLeft: 32 }}/>
           </div>
+          <div style={{ marginLeft: "auto" }}><Button icon="plus" onClick={onCreateInvoice}>New invoice</Button></div>
         </div>
 
-        <div className="mc-table-wrap">
-          <table style={{width:"100%",borderCollapse:"collapse",minWidth:720}}>
-            <thead>
-              <tr>{["Invoice #","Patient","Doctor","Dept","Date","Due","Total","Status","Actions"].map(h => (
-                <th key={h} style={{textAlign:"left",padding:"10px 14px",color:css.textGray,fontSize:11,fontWeight:600,borderBottom:`1px solid ${css.border}`}}>{h}</th>
-              ))}</tr>
-            </thead>
-            <tbody>
-              {filtered.map(inv => {
-                const s         = statusStyle[inv.status] || statusStyle.Unpaid;
-                const isOverdue = inv.status === "Unpaid" && inv.dueDate < getTodayPlus(0);
-                return (
-                  <tr key={inv.id} style={{transition:"background .15s"}}>
-                    <td style={{padding:"12px 14px",color:"#4361ee",fontSize:12,fontWeight:700,cursor:"pointer"}} onClick={() => onViewInvoice(inv)}>{inv.id}</td>
-                    <td style={{padding:"12px 14px",color:css.text,fontSize:13,fontWeight:600}}>{inv.patientName}</td>
-                    <td style={{padding:"12px 14px",color:css.text,fontSize:12}}>{inv.doctor}</td>
-                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12}}>{inv.dept}</td>
-                    <td style={{padding:"12px 14px",color:css.textGray,fontSize:12}}>{inv.date}</td>
-                    <td style={{padding:"12px 14px",fontSize:12,color:isOverdue?"#ef4444":css.textGray,fontWeight:isOverdue?700:400}}>{inv.dueDate}{isOverdue && " ⚠"}</td>
-                    <td style={{padding:"12px 14px",color:css.text,fontSize:13,fontWeight:700}}>${inv.grandTotal.toFixed(2)}</td>
-                    <td style={{padding:"12px 14px"}}>
-                      <span style={{padding:"4px 10px",borderRadius:20,fontSize:11,fontWeight:600,background:s.bg,color:s.c}}>{inv.status}</span>
-                      {inv.paidOn && <div style={{fontSize:10,color:css.textGray,marginTop:2}}>{inv.paymentMethod} · {inv.paidOn}</div>}
-                    </td>
-                    <td style={{padding:"12px 14px"}}>
-                      <div style={{display:"flex",gap:6}}>
-                        <button onClick={() => onViewInvoice(inv)} style={{...btnOutlineStyle(css),padding:"4px 10px",fontSize:11,borderRadius:6}}>View</button>
-                        {inv.status === "Unpaid" && <button onClick={() => onPay(inv)} style={{...btnGreenStyle,padding:"4px 10px",fontSize:11}}>Pay</button>}
-                        <button onClick={() => onPrint(inv)} style={{...btnOutlineStyle(css),padding:"4px 10px",fontSize:11,borderRadius:6}}>🖨</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filtered.length === 0 && (
-                <tr><td colSpan={9} style={{padding:28,textAlign:"center",color:css.textGray,fontSize:13}}>No invoices match this filter.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        {filtered.length === 0 ? <Card><EmptyState icon="file" title="No invoices match" body="Try another status or search term, or create a new invoice."/></Card> : (
+          <div className="mc-table-wrap">
+            <table className="mc-table" style={{ minWidth: 800 }}>
+              <thead><tr><th>Invoice</th><th>Patient</th><th>Doctor</th><th>Issued</th><th>Due</th><th className="num">Total</th><th>Status</th><th><span className="sr-only">Actions</span></th></tr></thead>
+              <tbody>
+                {filtered.map(inv => {
+                  const late = inv.status === "Unpaid" && inv.dueDate < today;
+                  return (
+                    <tr key={inv.id} className="mc-row-hover click" onClick={() => onViewInvoice(inv)}>
+                      <td className="mono" style={{ fontWeight: 500 }}>{inv.id}</td>
+                      <td style={{ fontWeight: 500 }}>{inv.patientName}</td>
+                      <td>{inv.doctor}<span className="sub">{inv.dept}</span></td>
+                      <td style={{ color: "var(--muted)", whiteSpace: "nowrap" }}>{inv.date}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>{inv.dueDate}{late && <span className="sub" style={{ color: "var(--negative)", fontWeight: 500 }}>Overdue</span>}</td>
+                      <td className="num" style={{ fontWeight: 600 }}>{money(inv.grandTotal)}</td>
+                      <td><Badge bg={`var(--pill-${KIND[inv.status] || "neutral"}-bg)`} fg={`var(--pill-${KIND[inv.status] || "neutral"}-fg)`}>{inv.status}</Badge>
+                        {inv.paidOn && <span className="sub">{inv.paymentMethod}, {inv.paidOn}</span>}</td>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }} onClick={e => e.stopPropagation()}>
+                        {inv.status === "Unpaid" && <Button size="sm" onClick={() => onPay(inv)}>Pay</Button>}{" "}
+                        <Button size="sm" variant="ghost" icon="printer" aria-label={`Print ${inv.id}`} title="Print" onClick={() => onPrint(inv)}/>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -6,11 +6,14 @@
    - "Continue with Google" (patients) uses Google Identity Services.
      It is enabled when the backend has GOOGLE_CLIENT_ID set
      (GET /api/auth/config); the ID token is verified by the server.
+   Layout: the same framed sheet as the portals. The frame carries the
+   brand and the three portals; the sheet carries the form. Colours are
+   the :root tokens in App.css (light and dark follow the system).
    ============================================================ */
 import { useEffect, useRef, useState } from "react";
 import * as api from "../api";
 import Icon, { GoogleLogo } from "../ui/Icon";
-import { Spinner } from "../ui/kit";
+import { Spinner, Tabs, Notice } from "../ui/kit";
 import { PORTALS } from "../ui/theme";
 
 const DEMO = [
@@ -19,9 +22,11 @@ const DEMO = [
   { role: "Patient", email: "thomas.iyer1@mail.com",      password: "patient123", color: PORTALS.patient.accent },
 ];
 
-const C = { text: "#0f172a", gray: "#64748b", border: "#e2e8f0", bg: "#f8fafc", accent: "#4361ee" };
-const input = { width: "100%", padding: "11px 13px", border: `1px solid ${C.border}`, borderRadius: 10, fontSize: 14, outline: "none", color: C.text, background: "white" };
-const label = { display: "block", fontSize: 12.5, fontWeight: 600, color: "#334155", marginBottom: 6 };
+const PORTAL_INFO = [
+  [PORTALS.admin, "Hospital staff and reception", "Every appointment, walk-in registration, doctors, patients, billing and analytics."],
+  [PORTALS.doctor, "Doctors", "Today's queue, your own patients, consultation notes and your schedule."],
+  [PORTALS.patient, "Patients", "Book, reschedule or cancel visits and read what your doctor wrote."],
+];
 
 let gsiPromise = null;
 function loadGoogleScript() {
@@ -60,8 +65,8 @@ function GoogleButton({ clientId, onCredential, onError, text }) {
 
   if (!clientId) {
     return (
-      <button type="button" onClick={() => onError("Google sign-in is not switched on yet. The administrator needs to add GOOGLE_CLIENT_ID to backend/.env (see README).")}
-        style={{ ...input, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer", fontWeight: 600, color: "#334155" }}>
+      <button type="button" className="mc-btn mc-btn--outline mc-btn--lg" style={{ width: "100%" }}
+        onClick={() => onError("Google sign-in is not switched on yet. The administrator needs to add GOOGLE_CLIENT_ID to backend/.env (see README).")}>
         <GoogleLogo/> Continue with Google
       </button>
     );
@@ -69,7 +74,7 @@ function GoogleButton({ clientId, onCredential, onError, text }) {
   return (
     <div style={{ minHeight: 44, display: "flex", justifyContent: "center" }}>
       <div ref={box} style={{ width: "100%", display: "flex", justifyContent: "center" }}/>
-      {!ready && <div style={{ ...input, display: "flex", alignItems: "center", justifyContent: "center", gap: 10, color: C.gray }}><Spinner size={14}/> Loading Google…</div>}
+      {!ready && <div className="mc-btn mc-btn--outline mc-btn--lg" style={{ width: "100%", color: "var(--muted)" }}><Spinner size={14}/> Loading Google</div>}
     </div>
   );
 }
@@ -87,6 +92,7 @@ export default function AuthScreen({ onAuthed, notice }) {
   useEffect(() => {
     api.getAuthConfig().then(c => setClientId(c.googleClientId)).catch(() => {});
   }, []);
+  useEffect(() => { document.title = "Sign in · MedCare"; }, []);
 
   async function finish(promise) {
     setBusy(true); setError(""); setInfo("");
@@ -94,7 +100,7 @@ export default function AuthScreen({ onAuthed, notice }) {
       const u = await promise;
       onAuthed(u);
     } catch (e) {
-      setError(e.status === 401 && mode === "signin" ? "Invalid email or password" : e.message);
+      setError(e.status === 401 && mode === "signin" ? "That email and password do not match. Check both and try again." : e.message);
       setBusy(false);
     }
   }
@@ -102,13 +108,13 @@ export default function AuthScreen({ onAuthed, notice }) {
   function submit(e) {
     e.preventDefault();
     if (mode === "signin") {
-      if (!form.email || !form.password) return setError("Enter your email and password");
+      if (!form.email || !form.password) return setError("Enter your email and password.");
       return finish(api.login(form.email.trim(), form.password));
     }
-    if (!form.name.trim() || !form.email.trim() || !form.password) return setError("Name, email and password are required");
-    if (form.password.length < 6) return setError("Password must be at least 6 characters");
+    if (!form.name.trim() || !form.email.trim() || !form.password) return setError("Name, email and password are required.");
+    if (form.password.length < 6) return setError("Password must be at least 6 characters.");
     const age = form.age === "" ? undefined : Number(form.age);
-    if (age !== undefined && (!Number.isInteger(age) || age < 0 || age > 120)) return setError("Age must be a whole number from 0 to 120");
+    if (age !== undefined && (!Number.isInteger(age) || age < 0 || age > 120)) return setError("Age must be a whole number from 0 to 120.");
     finish(api.register({ name: form.name.trim(), email: form.email.trim(), password: form.password,
       phone: form.phone.trim() || undefined, age, gender: form.gender || undefined }));
   }
@@ -117,144 +123,126 @@ export default function AuthScreen({ onAuthed, notice }) {
   const switchMode = (m) => { setMode(m); setError(""); setInfo(""); };
 
   return (
-    <div className="mc-auth" style={{ background: C.bg, zIndex: 50000 }}>
-      {/* brand panel */}
-      <section className="mc-auth-brand" style={{ background: "linear-gradient(145deg,#0b1437 0%,#1e2a78 55%,#4361ee 100%)" }}>
-        <div aria-hidden="true" style={{ position: "absolute", width: 420, height: 420, borderRadius: "50%", background: "radial-gradient(circle,rgba(255,255,255,.12),transparent 70%)", top: -120, right: -120 }}/>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, position: "relative" }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: "rgba(255,255,255,.14)", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid rgba(255,255,255,.2)" }}>
-            <Icon name="hospital" size={24}/>
-          </div>
+    <div className="mc-auth">
+      <section className="mc-auth-frame" aria-label="About MedCare">
+        <div className="mc-brand" style={{ padding: 0 }}>
+          <span className="mc-mark" aria-hidden="true"><Icon name="hospital" size={17}/></span>
           <div>
-            <div style={{ fontWeight: 800, fontSize: 18 }}>MedCare Hospital</div>
-            <div style={{ fontSize: 12, opacity: .75 }}>Appointment &amp; care management</div>
+            <div className="mc-brand-name">MedCare Hospital</div>
+            <div className="mc-brand-sub">Outpatient appointments and care</div>
           </div>
         </div>
 
-        <div style={{ position: "relative" }}>
-          <h1 style={{ fontSize: "clamp(26px, 3.4vw, 40px)", lineHeight: 1.15, fontWeight: 800, maxWidth: 520 }}>
-            One hospital.<br/>Three connected portals.
+        <div className="mc-auth-intro">
+          <h1 style={{ fontSize: "clamp(24px, 2.6vw, 32px)", lineHeight: 1.2, fontWeight: 600, letterSpacing: "-0.02em", maxWidth: "18ch", textWrap: "balance" }}>
+            One sign-in for patients, doctors and hospital staff.
           </h1>
-          <p style={{ marginTop: 14, fontSize: 15, opacity: .8, maxWidth: 480, lineHeight: 1.55 }}>
-            Sign in once and you land in the workspace made for your role. Each portal only shows the records that role is allowed to see.
+          <p style={{ marginTop: 12, fontSize: 15, color: "var(--muted)", maxWidth: "48ch" }}>
+            You land in the portal for your role, and each portal shows only the records that role is allowed to see.
           </p>
-          <div className="mc-auth-portals" style={{ display: "grid", gap: 12, marginTop: 28, maxWidth: 520 }}>
-            {[
-              ["shield", PORTALS.admin, "Hospital operations, doctors, admissions, billing and analytics."],
-              ["stethoscope", PORTALS.doctor, "Today's queue, your own patients, consultation notes and schedule."],
-              ["heart", PORTALS.patient, "Book visits, track appointments, read visit notes, manage your profile."],
-            ].map(([icon, p, text]) => (
-              <div key={p.name} style={{ display: "flex", gap: 14, padding: 14, borderRadius: 14, background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.14)" }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: p.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Icon name={icon} size={19}/>
-                </div>
+          <ul style={{ listStyle: "none", marginTop: 28, maxWidth: 480, borderTop: "1px solid var(--border)" }}>
+            {PORTAL_INFO.map(([p, who, text]) => (
+              <li key={p.name} style={{ display: "flex", gap: 14, padding: "14px 0", borderBottom: "1px solid var(--border)" }}>
+                <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: p.accent, marginTop: 6, flexShrink: 0 }}/>
                 <div>
-                  <div style={{ fontWeight: 700, fontSize: 14 }}>{p.name}</div>
-                  <div style={{ fontSize: 12.5, opacity: .78, marginTop: 2 }}>{text}</div>
+                  <div style={{ fontWeight: 600 }}>{p.name} <span style={{ fontWeight: 400, color: "var(--muted)" }}>for {who.toLowerCase()}</span></div>
+                  <div style={{ fontSize: 14, color: "var(--muted)", marginTop: 2 }}>{text}</div>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ul>
         </div>
 
-        <div className="mc-auth-portals" style={{ display: "flex", gap: 22, fontSize: 12.5, opacity: .8, flexWrap: "wrap", position: "relative" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="ambulance" size={15}/> Emergency: 108</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="phone" size={15}/> Helpdesk: +91 416 220 0000</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="clock" size={15}/> OPD 8 AM – 8 PM</span>
+        <div style={{ display: "flex", gap: "8px 22px", fontSize: 13.5, color: "var(--muted)", flexWrap: "wrap" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--negative)", fontWeight: 500 }}><Icon name="ambulance" size={16}/> Emergency: <a href="tel:108" style={{ color: "inherit" }}>108</a></span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="phone" size={15}/> Helpdesk +91 416 220 0000</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Icon name="clock" size={15}/> OPD 8 AM to 8 PM, Mon to Sat</span>
         </div>
       </section>
 
-      {/* form */}
-      <section className="mc-auth-form">
-        <form onSubmit={submit} style={{ width: "min(420px, 100%)" }}>
-          <h2 style={{ fontSize: 26, fontWeight: 800, color: C.text }}>{mode === "signin" ? "Welcome back" : "Create your patient account"}</h2>
-          <p style={{ color: C.gray, fontSize: 14, marginTop: 6, marginBottom: 22 }}>
-            {mode === "signin" ? "Sign in to continue to your portal." : "Book appointments and see your visit history online."}
+      <main className="mc-auth-sheet">
+        <form onSubmit={submit} noValidate style={{ width: "min(400px, 100%)" }}>
+          <h2 style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-0.012em" }}>{mode === "signin" ? "Sign in" : "Create your patient account"}</h2>
+          <p style={{ color: "var(--muted)", fontSize: 14, marginTop: 4, marginBottom: 18 }}>
+            {mode === "signin" ? "Use the email your hospital account was made with." : "Book appointments and see your visit history online."}
           </p>
 
-          <div style={{ display: "flex", padding: 4, background: "#eef2f7", borderRadius: 12, marginBottom: 22 }}>
-            {[["signin", "Sign in"], ["register", "New patient"]].map(([id, text]) => (
-              <button key={id} type="button" onClick={() => switchMode(id)}
-                style={{ flex: 1, padding: "9px 0", border: "none", borderRadius: 9, cursor: "pointer", fontWeight: 650, fontSize: 13.5,
-                  background: mode === id ? "white" : "transparent", color: mode === id ? C.text : C.gray, boxShadow: mode === id ? "0 1px 3px rgba(0,0,0,.08)" : "none" }}>
-                {text}
-              </button>
-            ))}
+          <div style={{ marginBottom: 22 }}>
+            <Tabs value={mode} onChange={switchMode} tabs={[{ id: "signin", label: "Sign in" }, { id: "register", label: "New patient" }]}/>
           </div>
+
+          {info && !error && <Notice tone="info" style={{ marginBottom: 16 }}>{info}</Notice>}
 
           <GoogleButton clientId={clientId} onCredential={onGoogle} onError={setError} text={mode === "signin" ? "signin_with" : "signup_with"}/>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0", color: C.gray, fontSize: 12 }}>
-            <span style={{ flex: 1, height: 1, background: C.border }}/>{mode === "signin" ? "or sign in with email" : "or register with email"}<span style={{ flex: 1, height: 1, background: C.border }}/>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "18px 0", color: "var(--muted)", fontSize: 13 }}>
+            <span style={{ flex: 1, height: 1, background: "var(--border)" }}/>or with email<span style={{ flex: 1, height: 1, background: "var(--border)" }}/>
           </div>
 
           {mode === "register" && (
-            <div style={{ marginBottom: 14 }}>
-              <label style={label} htmlFor="r-name">Full name</label>
-              <input id="r-name" style={input} value={form.name} onChange={set("name")} autoComplete="name" placeholder="e.g. Ananya Sharma"/>
+            <div className="mc-auth-field">
+              <label htmlFor="r-name">Full name</label>
+              <input id="r-name" className="mc-input" value={form.name} onChange={set("name")} autoComplete="name" placeholder="Ananya Sharma"/>
             </div>
           )}
-          <div style={{ marginBottom: 14 }}>
-            <label style={label} htmlFor="a-email">Email</label>
-            <input id="a-email" type="email" style={input} value={form.email} onChange={set("email")} autoComplete="username" placeholder="you@example.com"/>
+          <div className="mc-auth-field">
+            <label htmlFor="a-email">Email</label>
+            <input id="a-email" type="email" className="mc-input" value={form.email} onChange={set("email")} autoComplete="username" inputMode="email" placeholder="you@example.com" spellCheck={false}/>
           </div>
-          <div style={{ marginBottom: 14 }}>
-            <label style={label} htmlFor="a-pass">Password</label>
+          <div className="mc-auth-field">
+            <label htmlFor="a-pass">Password</label>
             <div style={{ position: "relative" }}>
-              <input id="a-pass" type={showPw ? "text" : "password"} style={{ ...input, paddingRight: 42 }} value={form.password} onChange={set("password")}
+              <input id="a-pass" type={showPw ? "text" : "password"} className="mc-input" style={{ paddingRight: 46 }} value={form.password} onChange={set("password")}
                 autoComplete={mode === "signin" ? "current-password" : "new-password"} placeholder={mode === "signin" ? "Your password" : "At least 6 characters"}/>
-              <button type="button" onClick={() => setShowPw(s => !s)} aria-label={showPw ? "Hide password" : "Show password"}
-                style={{ position: "absolute", right: 8, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.gray, padding: 4 }}>
-                <Icon name="eye" size={17}/>
+              <button type="button" onClick={() => setShowPw(s => !s)} aria-label={showPw ? "Hide password" : "Show password"} aria-pressed={showPw}
+                className="mc-iconbtn" style={{ position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)" }}>
+                <Icon name={showPw ? "eyeOff" : "eye"} size={17}/>
               </button>
             </div>
           </div>
           {mode === "register" && (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 90px 120px", gap: 10, marginBottom: 14 }}>
-              <div>
-                <label style={label} htmlFor="r-phone">Phone</label>
-                <input id="r-phone" style={input} value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+91…"/>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 84px 118px", gap: 10 }}>
+              <div className="mc-auth-field">
+                <label htmlFor="r-phone">Phone <span style={{ color: "var(--muted)", fontWeight: 400 }}>(optional)</span></label>
+                <input id="r-phone" type="tel" className="mc-input" value={form.phone} onChange={set("phone")} autoComplete="tel" placeholder="+91"/>
               </div>
-              <div>
-                <label style={label} htmlFor="r-age">Age</label>
-                <input id="r-age" type="number" min="0" max="120" style={input} value={form.age} onChange={set("age")}/>
+              <div className="mc-auth-field">
+                <label htmlFor="r-age">Age</label>
+                <input id="r-age" type="number" inputMode="numeric" min="0" max="120" className="mc-input" value={form.age} onChange={set("age")}/>
               </div>
-              <div>
-                <label style={label} htmlFor="r-gender">Gender</label>
-                <select id="r-gender" style={input} value={form.gender} onChange={set("gender")}>
-                  <option value="">—</option><option>Female</option><option>Male</option><option>Other</option>
+              <div className="mc-auth-field">
+                <label htmlFor="r-gender">Gender</label>
+                <select id="r-gender" className="mc-input" value={form.gender} onChange={set("gender")}>
+                  <option value="">Not given</option><option>Female</option><option>Male</option><option>Other</option>
                 </select>
               </div>
             </div>
           )}
 
-          {error && <div role="alert" style={{ display: "flex", gap: 8, padding: "10px 12px", background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 10, fontSize: 13, marginBottom: 14 }}><Icon name="alert" size={16}/>{error}</div>}
-          {info && !error && <div style={{ display: "flex", gap: 8, padding: "10px 12px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", borderRadius: 10, fontSize: 13, marginBottom: 14 }}><Icon name="info" size={16}/>{info}</div>}
+          {error && <Notice tone="negative" style={{ marginBottom: 14 }}>{error}</Notice>}
 
-          <button type="submit" disabled={busy}
-            style={{ width: "100%", padding: 13, border: "none", borderRadius: 10, background: C.accent, color: "white", fontWeight: 700, fontSize: 15,
-              cursor: busy ? "wait" : "pointer", opacity: busy ? .75 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-            {busy && <Spinner size={15}/>}{mode === "signin" ? "Sign in" : "Create account"}
+          <button type="submit" disabled={busy} className="mc-btn mc-btn--primary mc-btn--lg" style={{ width: "100%", minHeight: 44 }}>
+            {busy && <Spinner size={15}/>}{mode === "signin" ? (busy ? "Signing in" : "Sign in") : (busy ? "Creating account" : "Create account")}
           </button>
 
           {mode === "signin" && (
-            <div style={{ marginTop: 22, padding: 14, borderRadius: 12, background: "white", border: `1px dashed ${C.border}` }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: C.gray, marginBottom: 10, textTransform: "uppercase", letterSpacing: .6 }}>Demo accounts</div>
+            <div style={{ marginTop: 24, paddingTop: 18, borderTop: "1px solid var(--rule)" }}>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Try a demo account</div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 {DEMO.map(d => (
-                  <button key={d.role} type="button" onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}
-                    style={{ flex: "1 1 100px", padding: "8px 10px", borderRadius: 9, border: `1px solid ${d.color}40`, background: `${d.color}10`, color: d.color, fontWeight: 650, fontSize: 12.5, cursor: "pointer" }}>
-                    {d.role}
+                  <button key={d.role} type="button" className="mc-btn mc-btn--outline" style={{ flex: "1 1 96px" }}
+                    onClick={() => { setForm(f => ({ ...f, email: d.email, password: d.password })); setError(""); }}>
+                    <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 2, background: d.color }}/>{d.role}
                   </button>
                 ))}
               </div>
-              <div style={{ fontSize: 11.5, color: C.gray, marginTop: 8 }}>Fills in a seeded account. Every seeded doctor uses doctor123 and every patient patient123.</div>
+              <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 8 }}>Fills in a sample account. Every sample doctor uses doctor123 and every patient patient123.</p>
             </div>
           )}
-          <p style={{ fontSize: 11.5, color: C.gray, marginTop: 18, textAlign: "center" }}>
+          <p style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 18 }}>
             Staff accounts are created by the hospital administrator. Google sign-in is for patients.
           </p>
         </form>
-      </section>
+      </main>
     </div>
   );
 }

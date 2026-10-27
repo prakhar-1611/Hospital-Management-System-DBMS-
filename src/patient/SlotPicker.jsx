@@ -3,15 +3,21 @@
    working days) and a free one-hour slot. Free slots come from
    GET /api/doctors/:id/availability?date=  (the server checks leave,
    working hours and existing bookings).
+   Selection is shown by a filled chip plus a check, never by colour alone.
    ============================================================ */
 import { useEffect, useState } from "react";
 import * as api from "../api";
-import { Spinner } from "../ui/kit";
-import Icon from "../ui/Icon";
+import { Skeleton, Notice } from "../ui/kit";
 import { DAY_NAMES, getTodayPlus } from "../constants";
 import { weekday, fmtTime, fmtDate, isPastSlot } from "../ui/dates";
 
-export default function SlotPicker({ css, accent, doctor, date, time, onChange, exclude }) {
+const chip = (on, ok) => ({
+  border: `1px solid ${on ? "var(--accent)" : "var(--control)"}`, background: on ? "var(--accent)" : "var(--sheet)", color: on ? "#fff" : ok ? "var(--ink)" : "var(--muted)",
+  opacity: ok ? 1 : .5, cursor: ok ? "pointer" : "not-allowed", borderRadius: 8, font: "inherit",
+  transition: "background-color 120ms var(--ease-out), border-color 120ms var(--ease-out)",
+});
+
+export default function SlotPicker({ doctor, date, time, onChange, exclude }) {
   // the answer for one doctor + date; "loading" = no answer yet for the current pair
   const [result, setResult] = useState({ key: "", slots: [], msg: "" });
   const key = `${doctor._id}|${date}`;
@@ -40,50 +46,44 @@ export default function SlotPicker({ css, accent, doctor, date, time, onChange, 
 
   return (
     <div>
-      <div style={{ fontSize: 12, fontWeight: 600, color: css.textGray, marginBottom: 8 }}>Date</div>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }}>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 8 }}>Date</div>
+      <div role="radiogroup" aria-label="Date" style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6, scrollbarWidth: "thin" }}>
         {days.map(d => {
-          const ok = works(d);
-          const on = d === date;
+          const ok = works(d), on = d === date;
           return (
-            <button key={d} disabled={!ok} onClick={() => onChange({ date: d, time: "" })}
-              title={ok ? fmtDate(d) : "Doctor not available"}
-              style={{ flex: "0 0 62px", padding: "9px 0", borderRadius: 12, textAlign: "center", cursor: ok ? "pointer" : "not-allowed",
-                border: `1px solid ${on ? accent : css.border}`, background: on ? accent : ok ? css.card : css.subtle,
-                color: on ? "white" : ok ? css.text : css.textGray, opacity: ok ? 1 : .55 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, opacity: .85 }}>{DAY_NAMES[weekday(d)]}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, lineHeight: 1.2 }}>{Number(d.slice(8))}</div>
-              <div style={{ fontSize: 10.5, opacity: .8 }}>{fmtDate(d, { month: "short" })}</div>
+            <button key={d} role="radio" aria-checked={on} disabled={!ok} onClick={() => onChange({ date: d, time: "" })}
+              title={ok ? fmtDate(d) : "The doctor is not available this day"}
+              style={{ ...chip(on, ok), flex: "0 0 60px", padding: "8px 0", textAlign: "center" }}>
+              <span style={{ display: "block", fontSize: 12, opacity: .85 }}>{DAY_NAMES[weekday(d)]}</span>
+              <span style={{ display: "block", fontSize: 18, fontWeight: 600, lineHeight: 1.25 }}>{Number(d.slice(8))}</span>
+              <span style={{ display: "block", fontSize: 12, opacity: .85 }}>{fmtDate(d, { month: "short" })}</span>
             </button>
           );
         })}
       </div>
 
-      <div style={{ fontSize: 12, fontWeight: 600, color: css.textGray, margin: "16px 0 8px" }}>Time</div>
+      <div style={{ fontSize: 13, fontWeight: 500, margin: "16px 0 8px" }}>Time</div>
       {!date ? (
-        <div style={{ fontSize: 13, color: css.textGray }}>Pick a date to see open slots.</div>
+        <div style={{ fontSize: 13.5, color: "var(--muted)" }}>Pick a date to see open slots.</div>
       ) : loading ? (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: css.textGray }}><Spinner size={14} color={accent}/> Checking availability…</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 8 }} aria-busy="true">{[0, 1, 2, 3, 4, 5].map(i => <Skeleton key={i} h={38} r={8}/>)}</div>
       ) : msg ? (
-        <div style={{ fontSize: 13, color: "#b45309", display: "flex", gap: 6, alignItems: "center" }}><Icon name="info" size={15}/>{msg}</div>
+        <Notice tone="warning">{msg}</Notice>
       ) : (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 8 }}>
+          <div role="radiogroup" aria-label="Time" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(96px, 1fr))", gap: 8 }}>
             {slots.map(s => {
-              const free = usable.some(u => u.time === s.time);
-              const on = s.time === time;
+              const free = usable.some(u => u.time === s.time), on = s.time === time;
               return (
-                <button key={s.time} disabled={!free} onClick={() => onChange({ date, time: s.time })}
-                  style={{ padding: "10px 0", borderRadius: 10, fontSize: 13, fontWeight: 650, cursor: free ? "pointer" : "not-allowed",
-                    border: `1px solid ${on ? accent : css.border}`, background: on ? accent : free ? css.card : css.subtle,
-                    color: on ? "white" : free ? css.text : css.textGray, textDecoration: free ? "none" : "line-through", opacity: free ? 1 : .6 }}>
+                <button key={s.time} role="radio" aria-checked={on} disabled={!free} onClick={() => onChange({ date, time: s.time })}
+                  title={free ? undefined : "Already booked"} style={{ ...chip(on, free), minHeight: 38, fontSize: 14, fontWeight: 500, textDecoration: free ? "none" : "line-through" }}>
                   {fmtTime(s.time)}
                 </button>
               );
             })}
           </div>
-          <div style={{ fontSize: 12, color: css.textGray, marginTop: 10 }}>
-            {usable.length ? `${usable.length} slot${usable.length > 1 ? "s" : ""} open · each visit is 1 hour` : "No open slots on this day. Try another date."}
+          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 10 }}>
+            {usable.length ? `${usable.length} slot${usable.length > 1 ? "s" : ""} open. Each visit is one hour.` : "No open slots on this day. Try another date."}
           </div>
         </>
       )}

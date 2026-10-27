@@ -1,6 +1,6 @@
 /* ============================================================
    DoctorApp.jsx — "MedCare Clinician Hub" (role: doctor).
-   Loads ONLY the logged-in doctor's data:
+   Loads ONLY the signed-in doctor's data:
      GET /api/doctors/me        own profile
      GET /api/appointments      own appointments (server filters by doctor)
      GET /api/patients          own patients (patients with an appointment here)
@@ -8,12 +8,12 @@
    ============================================================ */
 import { useState, useEffect, useCallback, useMemo } from "react";
 import * as api from "../api";
-import { Card, Button, Spinner } from "../ui/kit";
+import { Button, Spinner, Skeleton, SkeletonRows, Notice, Segmented } from "../ui/kit";
 import { PORTALS, useTheme, useToasts } from "../ui/theme";
 import PortalShell from "../ui/PortalShell";
 import Icon from "../ui/Icon";
 import { toAppt, byDateAsc } from "../ui/records";
-import { todayStr, isPastSlot, fmtDate } from "../ui/dates";
+import { todayStr, isPastSlot, fmtTime } from "../ui/dates";
 import DoctorOverview from "./DoctorOverview";
 import DoctorAppointments from "./DoctorAppointments";
 import DoctorPatients from "./DoctorPatients";
@@ -23,6 +23,11 @@ import AppointmentModal from "./AppointmentModal";
 import PatientModal from "./PatientModal";
 
 const portal = PORTALS.doctor;
+const STATUS_OPTIONS = [
+  { value: "Available", label: "Available", dot: "var(--positive)" },
+  { value: "Busy", label: "Busy", dot: "var(--warning)" },
+  { value: "On Leave", label: "On leave", dot: "var(--negative)" },
+];
 
 export default function DoctorApp({ user, onLogout }) {
   const { isDark, setIsDark, css } = useTheme("doctor");
@@ -90,28 +95,46 @@ export default function DoctorApp({ user, onLogout }) {
 
   const openAppt = appts.find(a => a.id === openApptId);
   const nav = [
-    { id: "overview",     label: "Overview",        icon: "dashboard" },
-    { id: "appointments", label: "Appointments",    icon: "calendar", badge: needsUpdate.length || null },
-    { id: "patients",     label: "My Patients",     icon: "users" },
-    { id: "schedule",     label: "Schedule",        icon: "clock" },
-    { id: "profile",      label: "Profile",         icon: "user" },
+    { id: "overview",     label: "Today",        icon: "dashboard" },
+    { id: "appointments", label: "Appointments", icon: "calendar", badge: needsUpdate.length || null },
+    { id: "patients",     label: "My patients",  icon: "users" },
+    { id: "schedule",     label: "Schedule",     icon: "clock" },
+    { id: "profile",      label: "Profile",      icon: "user" },
   ];
-  const titles = { overview: "Overview", appointments: "Appointments", patients: "My Patients", schedule: "Schedule & Availability", profile: "My Profile" };
+
+  const todaysLeft = appts.filter(a => a.date === today && a.status === "Scheduled");
+  const nextUp = appts.filter(a => a.status === "Scheduled" && !isPastSlot(a.date, a.time)).sort(byDateAsc)[0];
+  const ready = !!doctor;
+  const meta = {
+    overview: { title: "Today",
+      finding: ready && (todaysLeft.length
+        ? <><strong>{todaysLeft.length} consultation{todaysLeft.length === 1 ? "" : "s"} left today.</strong> Next: {nextUp.patientName} at {fmtTime(nextUp.time)}.</>
+        : nextUp ? <>Nothing left today. Next visit is {nextUp.patientName} on {new Date(nextUp.date + "T00:00:00Z").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", timeZone: "UTC" })}.</> : "No consultations booked."),
+      actions: ready && <Segmented label="My availability" value={doctor.status} options={STATUS_OPTIONS} onChange={(s) => updateDoctor({ status: s }, `You are now ${s === "On Leave" ? "on leave" : s.toLowerCase()}`)}/> },
+    appointments: { title: "Appointments", finding: ready && <>{appts.filter(a => a.status === "Scheduled" && !isPastSlot(a.date, a.time)).length} upcoming{needsUpdate.length ? <>, <strong>{needsUpdate.length} past visit{needsUpdate.length === 1 ? "" : "s"} still need completing or cancelling</strong></> : ", none waiting for your update"}.</> },
+    patients: { title: "My patients", finding: ready && <>{patients.length} patients have booked with you. Other doctors' patients are not shown.</> },
+    schedule: { title: "Schedule", finding: "Your availability, working days and the next 14 days of slots." },
+    profile: { title: "Profile", finding: "Your details, practice summary and password." },
+  }[section];
 
   const shared = { css, accent: portal.accent, tint: portal.tint, isDark };
   let body;
   if (loading && !doctor) {
-    body = <Card css={css} style={{ display: "flex", alignItems: "center", gap: 12, color: css.textGray }}><Spinner color={portal.accent}/> Loading your clinic data…</Card>;
+    body = (
+      <div className="mc-stack" aria-busy="true" aria-label="Loading your clinic">
+        <div className="mc-grid-stats">{[0, 1, 2, 3].map(i => <Skeleton key={i} h={84} r={8}/>)}</div>
+        <SkeletonRows rows={5} h={52}/>
+      </div>
+    );
   } else if (error && !doctor) {
     body = (
-      <Card css={css} style={{ borderColor: "#fecaca" }}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", color: "#991b1b", marginBottom: 12 }}><Icon name="alert"/> Could not load your data: {error}</div>
-        <Button accent={portal.accent} icon="refresh" onClick={load}>Try again</Button>
-      </Card>
+      <Notice tone="negative" style={{ maxWidth: 560 }} action={<Button size="sm" variant="outline" icon="refresh" onClick={load}>Try again</Button>}>
+        <strong>Could not load your clinic.</strong> {error}
+      </Notice>
     );
   } else if (section === "overview") {
-    body = <DoctorOverview {...shared} user={user} doctor={doctor} appts={appts} patients={patientRows} needsUpdate={needsUpdate}
-      onOpenAppt={setOpenApptId} onUpdateAppt={updateAppt} onUpdateDoctor={updateDoctor}
+    body = <DoctorOverview {...shared} doctor={doctor} appts={appts} patients={patientRows} needsUpdate={needsUpdate}
+      onOpenAppt={setOpenApptId} onUpdateAppt={updateAppt}
       onNavigate={(s, tab) => { if (tab) setApptTab(tab); setSection(s); }}/>;
   } else if (section === "appointments") {
     body = <DoctorAppointments {...shared} appts={appts} tab={apptTab} setTab={setApptTab} needsUpdate={needsUpdate} onOpenAppt={setOpenApptId}/>;
@@ -127,21 +150,15 @@ export default function DoctorApp({ user, onLogout }) {
     <>
       {toastLayer}
       <PortalShell portal={portal} nav={nav} section={section} onNavigate={setSection} user={user}
-        roleLabel={doctor ? `${doctor.departmentId?.name || "Doctor"}` : "Doctor"}
-        title={titles[section]} subtitle={fmtDate(today, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        roleLabel={doctor ? (doctor.departmentId?.name || "Doctor") : "Doctor"}
+        title={meta.title} subtitle={meta.finding || undefined} titleActions={meta.actions}
         css={css} isDark={isDark} setIsDark={setIsDark} onLogout={onLogout}
         headerRight={
-          <button onClick={load} title="Refresh" aria-label="Refresh"
-            style={{ width: 38, height: 38, borderRadius: 10, border: `1px solid ${css.border}`, background: "transparent", color: css.textGray, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            {loading ? <Spinner size={15} color={portal.accent}/> : <Icon name="refresh" size={17}/>}
+          <button onClick={load} title="Refresh" aria-label="Refresh data" className="mc-iconbtn">
+            {loading ? <Spinner size={15}/> : <Icon name="refresh" size={17}/>}
           </button>
         }
-        sidebarExtra={
-          <div style={{ padding: 14, borderRadius: 12, background: isDark ? "#0f766e22" : portal.tint, color: isDark ? "#5eead4" : portal.accent, fontSize: 12.5 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, marginBottom: 4 }}><Icon name="phone" size={15}/> Clinical support</div>
-            <div style={{ opacity: .9 }}>On-call desk: ext. 2200<br/>Pharmacy: ext. 2310</div>
-          </div>
-        }>
+        sidebarExtra={<div className="mc-sidebar-note">On-call desk ext. 2200<br/>Pharmacy ext. 2310</div>}>
         {body}
       </PortalShell>
 
